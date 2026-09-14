@@ -1,13 +1,10 @@
-from . import repvgg, dino, clip, convnext, efficientnet, resnet, swin
+from . import dino, convnext, resnet
 
 
 BACKBONES = (
-    repvgg.RepVGG | dino.DINO | clip.CLIP_Vision
-    | convnext.ConvNeXt | efficientnet.EfficientNet | resnet.ResNet | swin.Swin
+    dino.DINO | convnext.ConvNeXt | resnet.ResNet
 )
 
 BACKBONE_CFGS = (
-    repvgg.RepVGG_Config | dino.DINO_Config | clip.CLIP_Vision_Config
-    | convnext.ConvNeXt_Config | efficientnet.EfficientNet_Config
-    | resnet.ResNet_Config | swin.Swin_Config
+    dino.DINO_Config | convnext.ConvNeXt_Config | resnet.ResNet_Config
 )

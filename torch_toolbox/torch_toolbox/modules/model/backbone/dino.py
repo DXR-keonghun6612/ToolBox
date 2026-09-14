@@ -19,13 +19,13 @@ _DINO_VARIANTS = {
     "v2_vits14": "vit_small_patch14_dinov2.lvd142m",
     "v2_vitb14": "vit_base_patch14_dinov2.lvd142m",
     "v2_vitl14": "vit_large_patch14_dinov2.lvd142m",
-    "v2_vitg14": "vit_giant2_patch14_dinov2.lvd142m",
+    "v2_vitg14": "vit_giant_patch14_dinov2.lvd142m",
 
     # DINOv2 with registers
     "v2_vits14_reg": "vit_small_patch14_reg4_dinov2.lvd142m",
     "v2_vitb14_reg": "vit_base_patch14_reg4_dinov2.lvd142m",
     "v2_vitl14_reg": "vit_large_patch14_reg4_dinov2.lvd142m",
-    "v2_vitg14_reg": "vit_giant2_patch14_reg4_dinov2.lvd142m",
+    "v2_vitg14_reg": "vit_giant_patch14_reg4_dinov2.lvd142m",
 
     # DINOv3
     "v3_vitl16_sat": "vit_large_patch16_dinov3.sat493m",
@@ -147,6 +147,16 @@ class DINO(Trainable_Model):
         폭이라 단이 몇 개든 값은 같다 — 소비하는 쪽이 합칠 때 폭이 필요해서 개수를 맞춘다.
         """
         return [int(self.backbone.num_features)] * max(len(self.out_indices), 1)
+
+    def Feature_strides(self) -> list[int]:
+        """단별 출력 stride. ViT 는 전 블록이 같은 격자라 어느 단이든 patch 크기다.
+
+        소비하는 쪽이 다단을 합칠 때 "어느 단이 어느 해상도인가"를 물어야 하는데,
+        CNN 백본은 단마다 다르고 ViT 는 전부 같다 — 그 차이를 소비처가 분기로 알지
+        않도록 양쪽이 같은 형태로 답한다.
+        """
+        _ph, _ = self.backbone.patch_embed.patch_size
+        return [int(_ph)] * max(len(self.out_indices), 1)
 
     def forward(self, x, **kwarg):
         if self.out_indices:

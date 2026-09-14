@@ -76,6 +76,20 @@
 
 - [ ] Transformer 계열 모듈 고도화 (Attention, Embedder 리팩토링)
 
+### 합의 사항 — 백본 래퍼는 쓰는 것만 둔다
+
+- 현재 : `dino` · `convnext` · `resnet`
+- 되살리는 비용이 낮음 — `Timm_Feature_Backbone` 상속 + `VARIANTS` 맵 + Config 세 줄
+- 되살릴 때 확인 : timm 모델명·태그 유효성 · 가중치 라이선스
+- 태그 유효성은 눈으로 안 보임 — `timm.list_pretrained(arch)` 로 대조. timm 버전마다 태그가 바뀜
+
+### 논의 대상 — DINOv3 가중치를 둘 것인가
+
+- 걸리는 것 : `_DINO_VARIANTS` 의 `v3_*` 가 Meta DINOv3 라이선스. DINOv2(Apache-2.0)와 조건이 다름
+- 목표 : 상업 이용 가능한 가중치만 남기기 (ConvNeXt V2 를 뺀 것과 같은 기준)
+- 갈래 : 전부 제거 / 조건 확인 후 유지 / 제약을 주석으로만 남김
+- 정해지는 조건 : DINOv3 라이선스 원문 확인
+
 ### 논의 대상 — `transform/mask` 의 "정준(canonical)" 이 과한 주장인가
 
 `canonical.py` / `Frame` / README 의 "정준 좌표계" 는 **유일한 대표 자세가 있다**고 말하는데
