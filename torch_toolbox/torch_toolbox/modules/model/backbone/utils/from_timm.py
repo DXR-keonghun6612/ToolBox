@@ -6,8 +6,7 @@ import timm
 import torch
 import torch.nn as nn
 
-from ....definition import Module_Config_Template
-from ...definition import Trainable_Model
+from ...definition import Trainable_Model, Trainable_Model_Config
 
 """timm ``features_only`` 백본 래퍼의 공통 계약.
 
@@ -46,11 +45,16 @@ def load_timm_backbone(
 
 
 @dataclass
-class Timm_Feature_Backbone_Config(Module_Config_Template):
+class Timm_Feature_Backbone_Config(Trainable_Model_Config):
     """``Timm_Feature_Backbone`` 래퍼 공통 설정.
 
     각 래퍼 Config 는 이걸 상속해 ``config_type``·``object_type``·``variant`` 와
     자기 ``out_indices`` 기본값만 선언한다.
+
+    ``Trainable_Model_Config`` 를 베이스로 두는 이유는 ``lr`` · ``weight_decay`` 다 —
+    모듈 쪽(``Timm_Feature_Backbone``)은 ``Trainable_Model`` 이라 받을 수 있는데 Config 에
+    필드가 없으면 yaml 의 ``lr:`` 이 ``Extract()`` 에서 빠져 **조용히 무시**된다.
+    사전학습 백본은 헤더보다 한 자릿수 낮은 lr 이 필요하므로 이 필드가 실제로 쓰인다.
 
     Attributes:
         pretrained: 사전학습 가중치 로드 여부. 이 래퍼들이 존재하는 이유가 사전학습

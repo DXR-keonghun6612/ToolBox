@@ -32,11 +32,16 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
     Attributes:
         shared: 모든 Config에 공통 적용되는 기반 필드.
         use_amp: AMP(자동 혼합 정밀도) 활성화 여부.
+        max_grad_norm: 그래디언트 L2 norm 상한. 0 이면 자르지 않는다.
+            unscale 뒤에 걸므로 AMP 와 같이 써도 스케일 인자에 영향받지 않는다.
+            잘리기 전 norm 이 ``grad_norm`` 으로 배치 metric 에 실린다 — 상한에 걸리는
+            빈도가 높으면 lr 이 과한 것이고, 그건 이 값이 아니라 lr 로 고친다.
         mode_cfg: mode 문자열 → 처리된 meta dict 매핑.
     """
 
     shared: dict[str, Any] = field(default_factory=dict)
     use_amp: bool = True
+    max_grad_norm: float = 0.0
 
     mode_meta: InitVar[dict[str, dict[str, Any]] | None] = None
 
@@ -66,6 +71,7 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
         _data: dict[str, Any] = {
             "shared": self.shared,
             "use_amp": self.use_amp,
+            "max_grad_norm": self.max_grad_norm,
             "mode_cfg": dict(self.mode_cfg),
             **kwarg,
         }

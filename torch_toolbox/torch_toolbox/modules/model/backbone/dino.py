@@ -7,8 +7,7 @@ import torch.nn as nn
 
 from .... import CFGS
 from ... import MODELS
-from ...build import Module_Config_Template
-from ..definition import Trainable_Model
+from ..definition import Trainable_Model, Trainable_Model_Config
 
 
 MODEL_NAME = "dino"
@@ -44,7 +43,7 @@ DinoVariantType = Literal[
 
 @CFGS.Register_module(CONFIG_NAME)
 @dataclass
-class DINO_Config(Module_Config_Template):
+class DINO_Config(Trainable_Model_Config):
     config_type: str = CONFIG_NAME
     object_type: str = MODEL_NAME
     trainable: bool = False

@@ -67,6 +67,7 @@ class Supervised_Runner(Base_Runner[Supervised_Assembler, torch.Tensor | None]):
             **kwargs: _Forward에 그대로 전달되는 추가 인자.
         """
         _use_amp = self.assembler.use_amp
+        _max_norm = self.assembler.max_grad_norm
         for _mode, _loader, _is_train in self._Iter_context(
             current_iter, dataloaders, model, scheduler, is_test, rank, metric
         ):
@@ -78,6 +79,20 @@ class Supervised_Runner(Base_Runner[Supervised_Assembler, torch.Tensor | None]):
                         _batch, device, _is_train, model, loss_fn=loss_fn, **kwargs
                     )
 
+                if _is_train and _loss is not None:
+                    assert optimizer is not None and scaler is not None
+                    optimizer.zero_grad(set_to_none=True)
+                    scaler.scale(_loss).backward()
+                    if _max_norm > 0:
+                        # unscale 뒤에 잘라야 AMP 스케일 인자와 무관한 실제 norm 기준이 된다.
+                        scaler.unscale_(optimizer)
+                        _norm = torch.nn.utils.clip_grad_norm_(
+                            model.parameters(), _max_norm)
+                        # 잘리기 전 norm. 상한에 얼마나 자주 걸리는지가 lr 진단이다.
+                        _output["grad_norm"] = (float(_norm), _batch_size)
+                    scaler.step(optimizer)
+                    scaler.update()
+
                 # 경과 시간은 batch_size로 나눠 sample당 시간으로 정규화
                 _elapsed = (Time_Utils.Stamp() - _t_st).total_seconds()
                 if _mode in metric:
@@ -88,13 +103,6 @@ class Supervised_Runner(Base_Runner[Supervised_Assembler, torch.Tensor | None]):
                 _batch_mon = self.assembler.mode_cfg[_mode.value].get("batch_monitoring")
                 if _batch_mon and _mode in metric:
                     log_batch(current_iter, _i, _total, metric[_mode], _batch_mon)
-
-                if _is_train and _loss is not None:
-                    assert optimizer is not None and scaler is not None
-                    optimizer.zero_grad(set_to_none=True)
-                    scaler.scale(_loss).backward()
-                    scaler.step(optimizer)
-                    scaler.update()
 
     def _Iter_context(
         self,
