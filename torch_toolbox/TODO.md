@@ -1,117 +1,127 @@
 # TODO
 
-미완료 작업 목록. 완료 이력은 [README 개발 로그](./README.md#개발-로그) 참조.
+구조는 `README.md` 소유. 여기는 미완 항목과 열린 설계 질문만.
 
----
+## 논의 대상
 
-## 후속 작업
+### config 기반 위상 조립기
 
-### ★ 계획 — config 기반 **위상 조립기** (동적 그래프 조립 모듈)
+- 걸리는 것 : `Build_from_registry` 는 조립만 하고 데이터 흐름(위상)은 forward 코드가 가짐 ->
+  특정 조합을 코드로 박은 용접 클래스가 위상을 하드코딩
+- 목표 : config 가 layer 위상(여러 입력, 분기)을 선언하면 그대로 잇는 범용 조립 모듈
+- 갈래 : LENS `process` 의 ctx/Stage 엔진을 공유로 올림 / torch_toolbox 자체 조립기
+- 정해지는 조건 : "core 연산 엔진 공유" 논의의 결론
+- 적용 대상 : geometry 내부(frame -> polar -> radial -> descriptor -> 토큰), 학습 그래프
+  (토큰 -> 헤더)
 
-용접 클래스(`Silhouette_Embedding` 등 특정 조합을 코드로 박은 것)를 없애고, **config 가 layer 위상을
-선언하면 그대로 연결하는 범용 조립 모듈**을 둔다. 핵심은 단순 순차가 아니라 **위상(topology)** —
-여러 입력·분기를 처리해 각 layer 를 config 가 정한 연결대로 잇는다(모델 그래프 구성).
+### geometry descriptor 의 config 선택
 
-- `Build_from_registry`(build.py)는 **조립(construction)만** 하고 런타임 데이터 흐름(위상)은 forward
-  코드가 갖는다 — 그래서 지금은 용접 클래스가 forward 로 위상을 하드코딩한다. 이 조립기가 그 위상을
-  **config 로** 받아 연결하면 용접이 사라진다.
-- LENS `process` 의 ctx/Stage 엔진이 정확히 이 개념(유닛이 ctx 에서 꺼내 쓰고 route) — 공유로 올릴지,
-  torch_toolbox 자체 조립기로 갈지 미결(→ 세션 초 "core 연산 엔진 공유" 논의와 같은 지점).
-- 적용 대상: crop→resize→geometry 전처리, geometry 내부(frame→polar→radial→descriptor→토큰화),
-  학습 그래프(geometry 토큰 → transformer 헤더). 지금은 용접 클래스/소비처 배선으로 임시.
+- 걸리는 것 : `Geometry_Embedding.Build` 가 sub-module 과 spec, concat 순서를 코드로 박음.
+  descriptor 를 넣고 빼려면 코드 수정
+- 목표 : 파이프라인(frame/coords/polar/radial)은 항상, descriptor 는 `sub_module_meta` 로 선택.
+  forward 가 존재하는 descriptor 만 조립
+- 갈래 : 위 위상 조립기 위에서 / `Build_from_registry` 만으로
+- 정해지는 조건 : 위상 조립기 결론
+- 같이 갈 것 : 한 모듈이 여러 중간값을 소비하는 경우(stats, fourier 류)의 입력 바인딩.
+  지금 토큰 스키마에서는 제거라 당장 불필요
+- 소비처 : LENS analysis 가 flat 출력을 가정 -> LENS `core/process/TODO.md`
 
-### ★ geometry embedding — config 조립 + 토큰 출력 전환 (진행 중)
+### DINOv3 가중치
 
-`transform/mask/geometry` 를 **config 기반 조립 + 토큰 시퀀스 출력**으로 재작성한다. 왜:
-
-- **지금은 하드코딩** — `Geometry_Embedding.Build` 가 sub-module(frame·coords·polar·radial·region·
-  moment·occ·stats·fourier)과 spec 리스트·concat 순서를 전부 코드로 박아, descriptor 를 넣고 빼려면
-  코드를 고쳐야 한다. `Silhouette_Embedding` 은 config 조립(sub_module_meta)인데 geometry 내부만 monolith.
-- **descriptor 는 이미 다 등록 모듈**(`centroid_frame`·`polar_raster`·`radial_rle`·`region_scalars`·
-  `chirality_moments`·`fourier_descriptor` … MODELS 등록 확인됨). `Build_from_registry` 로 조립 가능 —
-  build.py 는 조립만, 데이터 흐름(frame→polar→radial→descriptor)은 forward 코드가 표현(classification 이
-  `cat(backbone, geometry)→header` 를 forward 로 잇듯이).
-
-**출력 = 토큰 `(B, seq, 2K)`.** flat `(B, D)` 는 `(B, 1, D)` 인 토큰의 특수형이라 토큰이 일반형이다.
-목표 토큰 스키마(합의됨):
-
-- **각도 시퀀스**: `radial_rle` (512, 2K) — θ별 재료 밴드(살-구멍-살). centroid 위치 무관하게 구멍 표현
-  (기존 radial_outer/inner 는 centroid 가 구멍 안에 있어야만 구멍이 보였다 — rle 가 대체).
-- **전역 토큰(각 2K=8, 뒤 패딩)**: `moment`(6)·`area`(2)·`ratio`(6)·`size`(7)·`position`(2).
-- **제거**: radial_outer/inner, outer/inner/thickness/coverage_stats, spectral(fourier mag/phase 전부).
-  spectral 은 radial 프로파일의 Fourier(=중복), stats 도 프로파일 파생 → rle 로 통일.
-- `K` 는 config 상수(`Radial_RLE.max_bands`, 기본 4). 2K = 토큰 차원.
-
-**목적 — 토큰 기반 학습**: geometry 토큰 → transformer 헤더(기존 FC 헤더 대체, 더 압축적). 형상을
-토큰이 다 담으므로 **DINOv2(ViT) 백본 제거** 가능(이미지 백본 없이 형상 토큰만으로 분류). 재학습 동반.
-
-- [ ] descriptor 를 sub_module_meta 로 선언, 파이프라인(frame/coords/polar/radial)은 항상, descriptor 는
-      config 선택. forward 가 **존재하는 descriptor 만 동적 조립**(고정 concat 제거).
-- [ ] 출력 shape flat → 토큰 `(B, seq, 2K)`. Normalizer(그룹별 선형 scale)·`data_group_of`·`axis_of`·
-      `Grouped` 를 토큰 축에 맞춰 갱신.
-- [ ] stats/fourier 처럼 **한 모듈이 여러 입력**(r_outer/r_inner)에 쓰이던 것 — 토큰 스키마에선 제거라
-      당장 불필요하나, 되살릴 땐 입력 바인딩(어느 중간값을 소비) 설계 필요.
-- [ ] 소비처(LENS analysis: flat 가정) 토큰 대응 → LENS `core/process/TODO.md`.
-
----
-
-## 테스트
-
-- [ ] `runner/assembler` — mode별 `Assemble_Metric` 빌드 및 `Update/Finalize` 흐름 테스트
-- [ ] `metric/accumulator` — Scalar/Centroid/Assemble accumulator 단위 테스트
-- [ ] `runner/supervised` — `_Iter_hook` → `_Forward` → `metric[mode].Update` → `log_batch` 흐름 통합 테스트
-
----
-
-## dataset
-
-- [ ] YAML 파일 읽기 (`_Load_id_map` 등) — `python_toolbox` IO 유틸리티로 이전
-- [ ] data transform — `Get_transform()` if-else 분기를 registry 구조로 교체
-- [ ] Object Detection 데이터셋 파이프라인 완성 (COCO, YOLO) — coco.py/yolo.py 스텁 상태
-- [ ] `dataloader/classification/image.py` — 이미지 외 입력(포인트클라우드, 센서 데이터 등)을 포괄하는 일반화된 classification dataset 구조로 개선 필요
-
----
-
-## modules
-
-- [ ] Transformer 계열 모듈 고도화 (Attention, Embedder 리팩토링)
-
-### 합의 사항 — 백본 래퍼는 쓰는 것만 둔다
-
-- 현재 : `dino` · `convnext` · `resnet`
-- 되살리는 비용이 낮음 — `Timm_Feature_Backbone` 상속 + `VARIANTS` 맵 + Config 세 줄
-- 되살릴 때 확인 : timm 모델명·태그 유효성 · 가중치 라이선스
-- 태그 유효성은 눈으로 안 보임 — `timm.list_pretrained(arch)` 로 대조. timm 버전마다 태그가 바뀜
-
-### 논의 대상 — DINOv3 가중치를 둘 것인가
-
-- 걸리는 것 : `_DINO_VARIANTS` 의 `v3_*` 가 Meta DINOv3 라이선스. DINOv2(Apache-2.0)와 조건이 다름
-- 목표 : 상업 이용 가능한 가중치만 남기기 (ConvNeXt V2 를 뺀 것과 같은 기준)
-- 갈래 : 전부 제거 / 조건 확인 후 유지 / 제약을 주석으로만 남김
+- 걸리는 것 : `_DINO_VARIANTS` 의 `v3_*` 가 Meta DINOv3 라이선스. DINOv2(Apache-2.0)와 다름
+- 목표 : 상업 이용 가능한 가중치만 (ConvNeXt V2 를 뺀 기준)
+- 갈래 : 전부 제거 / 조건 확인 후 유지 / 제약을 주석으로만
 - 정해지는 조건 : DINOv3 라이선스 원문 확인
 
-### 논의 대상 — `transform/mask` 의 "정준(canonical)" 이 과한 주장인가
+### `transform/mask` 의 "정준(canonical)"
 
-`canonical.py` / `Frame` / README 의 "정준 좌표계" 는 **유일한 대표 자세가 있다**고 말하는데
-대칭 형상에서는 성립하지 않는다 — n≥3 회전대칭이면 `Z2 = 0`, 2회 대칭이면 `Z3 = 0` 이라
-각도가 원리적으로 미결정이고 출력은 노이즈가 정한 방향이다. `anisotropy` / `flip_margin` 은
-그 미결정성을 **보고**할 뿐 없애지 못한다. `Align_Raster` 서술만 "주축 정렬" 로 낮췄다.
+- 걸리는 것 : `canonical.py`, `Frame`, README 가 유일한 대표 자세를 말하나 대칭 형상에서는
+  불성립 (n >= 3 회전대칭이면 `Z2 = 0`, 2회 대칭이면 `Z3 = 0`). `anisotropy`, `flip_margin` 은
+  미결정성을 보고할 뿐 없애지 못함. `Align_Raster` 서술만 "주축 정렬" 로 낮춤
+- 목표 : 이름과 계약이 실제 보장과 일치
+- 갈래 : 이름(`canonical.py`, `Frame`)까지 변경 / "정준" 을 비대칭 형상 한정으로 재정의
+- 정해지는 조건 : 소비처가 미결정 케이스를 다루는 계약 - 임계로 회전 불변 거리로 내려갈지,
+  두 자세를 다 내고 하류가 고를지. 지금은 값만 노출
+- 같이 정할 것 : `flip_phase_deg` 부품별 표의 거처. 형상 상수인데 표는 소비처(413)가 들고
+  toolbox 는 값만 받음
 
-- 모듈·타입 이름(`canonical.py`, `Frame`)까지 바꿀 것인가, "정준" 을 *조건부*(비대칭 형상에
-  한해)로 재정의하고 이름은 둘 것인가.
-- 소비처가 미결정 케이스를 어떻게 다루는가 — 임계로 회전 불변 거리로 내려갈지, 두 자세를
-  다 내고 하류가 고를지. 지금은 계약이 없고 값만 노출한다.
-- `flip_phase_deg` 부품별 표의 거처. 형상이 정하는 상수인데 표는 소비처(413)가 들고
-  torch_toolbox 는 값만 받는다 — 이 분리를 유지할지.
+### 마스크 입력 dtype
 
----
+- 걸리는 것 : 실루엣 사슬 입력이 float32 {0, 1}. 호스트 -> 엔진 전송이 uint8 의 4배
+- 목표 : uint8 (1, 1, H, W) 입력
+- 갈래 : toolbox 첫 모듈에서 캐스팅 / 소비처 래퍼에서 캐스팅
+- 정해지는 조건 : TRT 는 uint8 을 입출력 텐서로만 허용 - 캐스팅이 첫 연산이면 어느 쪽이든 됨.
+  소비처 래퍼가 리샘플(`rate`)을 갖게 되므로 그쪽이 자연스러움
 
-## 배포 파이프라인
+## 합의 사항
 
-- [ ] ONNX 추출 후 모델 무결성 검증 로직 추가 (`onnx.checker.check_model()`)
+### 실루엣 사슬 길이 상수 - `trust_radius` 하나
 
----
+- 길이 단위는 기준 px 하나. `sampling_size`, `r_max`, `num_radial` 을 `trust_radius` 로 통합
+- `trust_radius` (정수, 기준 px) : 이 반경 안은 1 px 간격으로 전부 읽고 밖은 안 읽음
+- 유도 : `dr = 1`, `num_radial = trust_radius`, `norm = trust_radius` (FP16 무차원화 상수).
+  셀 안 세부는 `sub` 가 맡음
+- 캔버스 크기는 값에 안 남음. 오프셋 LUT 를 centroid 원점에 더해 읽을 뿐 (실증 : 280 캔버스와
+  600x800 프레임에서 토큰 비트 단위 동일)
+- `norm` 이 값에 남는 출력은 moment 뿐 (`_mu30` 계열이 원시 3차 모멘트, `norm^-3`).
+  `Region_Scalars` 는 되곱해 상쇄. 상수 변경(197.28 -> trust_radius)은 소비처의 도메인
+  나눗값으로 흡수
+- 현장 배율 `(rate_h, rate_w)` (기준 카메라 1 px 가 현장 카메라에서 몇 px) 는 toolbox 밖 -
+  소비처 래퍼가 입력 마스크를 기준 px 캔버스로 리샘플해 넣고 `center` 만 현장 px 로 되돌림.
+  toolbox 는 기준 px 상수만 앎
+- 걸리는 모듈 : `Centroid_Frame`, `Frame_Coords`, `Polar_Raster`, `Radial_Profile`, `Radial_RLE`,
+  `Region_Scalars`, `Occupancy`, `Geometry_Embedding`, `image.py` 의 `Align_Raster`(frame 생성)
 
-## 로깅 표준화
+### geometry 토큰 스키마
 
-- [ ] `python_toolbox` 로거 도입 후 `definition.py` 내 `print` 교체 — python_toolbox 작업 완료 후 진행
+- 출력은 토큰. flat `(B, D)` 는 `(B, 1, D)` 의 특수형
+- 각도 시퀀스 `radial_rle` (NT, K) : theta 별 재료 밴드. centroid 가 구멍 안에 없어도 구멍 표현
+- 전역 : `moment`(6), `area`(2), `ratio`(6), `size`(7), `position`(2)
+- 제거 : radial_outer/inner, outer/inner/thickness/coverage_stats, spectral(fourier). 전부 radial
+  프로파일 파생이라 rle 로 통일
+- `K` 는 config 상수 (`Radial_RLE.max_transitions`)
+- 조립(병합, 패딩)은 소비처 책임. `Features()` 가 도메인별 native 형태로 냄
+
+### 백본 래퍼는 쓰는 것만
+
+- 현재 : `dino`, `convnext`, `resnet`
+- 되살리는 비용 : `Timm_Feature_Backbone` 상속 + `VARIANTS` 맵 + Config 세 줄
+- 되살릴 때 확인 : timm 모델명, 태그 유효성(`timm.list_pretrained(arch)`. 버전마다 바뀜),
+  가중치 라이선스
+
+## 진행 계획
+
+### `trust_radius` 통합 (`transform/mask`)
+
+- [ ] 회귀 : 옛 상수(sampling_size 280, r_max 300, num_radial 360)와 대조. rle 는 dr 0.833 -> 1
+      양자화 차이(반 px 이내), size/ratio/position 동일, moment 는 `(197.28 / trust_radius)^3` 배
+- [ ] `Features()` 가 frame 을 함께 돌려주기. 소비처가 `frame()` 을 한 번 더 부름
+- [ ] 순환 import : `occupancy` -> `geometry.spec` -> `geometry/__init__` -> `region` -> `occupancy`.
+      `occupancy` 를 먼저 import 하면 실패. `geometry.spec` 을 `geometry/` 밖으로 빼거나
+      `geometry/__init__` 이 하위를 지연 import
+
+### geometry descriptor 선택 (위상 조립기 결론 뒤)
+
+- [ ] descriptor 를 `sub_module_meta` 로 선언. forward 가 존재하는 것만 조립
+- [ ] Normalizer(그룹별 선형 scale), `data_group_of`, `axis_of`, `Grouped` 를 토큰 축에 맞춤
+
+### 테스트
+
+- [ ] `runner/assembler` : mode 별 `Assemble_Metric` 빌드, `Update/Finalize` 흐름
+- [ ] `metric/accumulator` : Scalar/Centroid/Assemble accumulator 단위
+- [ ] `runner/supervised` : `_Iter_hook` -> `_Forward` -> `metric[mode].Update` -> `log_batch` 통합
+
+### dataset
+
+- [ ] data transform 의 `Get_transform()` if-else 를 registry 로
+- [ ] Object Detection 데이터셋(COCO, YOLO). `coco.py`/`yolo.py` 스텁
+- [ ] `dataloader/classification/image.py` : 이미지 외 입력(포인트클라우드, 센서)을 포괄하는
+      classification dataset 구조
+
+### modules
+
+- [ ] Transformer 계열(Attention, Embedder) 리팩토링
+
+### 배포
+
+- [ ] ONNX 추출 후 무결성 검증 (`onnx.checker.check_model()`)

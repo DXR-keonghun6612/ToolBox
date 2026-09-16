@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import math
 from typing import Any
 
 import torch
@@ -73,7 +74,9 @@ class Align_Raster(Trainable_Model):
     def Build(self, output_size: tuple[int, int] = (224, 224), **kwargs: Any) -> None:
         _h, _w = int(output_size[0]), int(output_size[1])
         self.output_size = (_h, _w)
-        self.frame = Centroid_Frame(name="frame", trainable=False, sampling_size=self.output_size)
+        # 길이 단위 상수는 출력 캔버스 반대각. 여기서는 FP16 무차원화에만 쓰임
+        _radius = int(math.ceil(math.hypot((_h - 1) / 2.0, (_w - 1) / 2.0)))
+        self.frame = Centroid_Frame(name="frame", trainable=False, trust_radius=_radius)
 
         # 출력 픽셀의 캔버스 중심 기준 좌표 (상수).
         _ys = torch.arange(_h, dtype=torch.float32) - (_h - 1) / 2.0
