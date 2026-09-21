@@ -1,17 +1,12 @@
+"""평균 계열 공간 통계. box 창, 가중 평균. reflect 패딩."""
 from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-"""평균 계열 공간 통계. box 창, 가중 평균.
 
-- 합 대신 평균의 비. 600x800 합은 FP16 최대(65504) 초과
-- reflect 패딩. 프레임 경계에 인위적 대비 없음. 폭 < 입력 변
-"""
-
-
-_WEIGHT_EPS = 1e-3       #: 가중치 평균 하한. 가중치가 전부 0 일 때 0 나눗셈 방지
+_WEIGHT_EPS = 1e-3       #: 가중치 평균 하한
 
 
 def Weighted_mean(v: Tensor, w: Tensor) -> Tensor:
@@ -48,7 +43,7 @@ def Local_stats(v: Tensor, *, window: int, floor: float) -> tuple[Tensor, Tensor
     Args:
         v: (N, C, H, W).
         window: 창 한 변 (홀수).
-        floor: 표준편차 하한. 평탄 영역 노이즈 증폭 방지.
+        floor: 표준편차 하한.
 
     Returns:
         (mean, std). 각각 (N, C, H, W). std = sqrt(var + floor^2).
@@ -56,7 +51,6 @@ def Local_stats(v: Tensor, *, window: int, floor: float) -> tuple[Tensor, Tensor
     _c = v.shape[1]
     _stat = Box_mean(torch.cat([v, v * v], dim=1), window=window)
     _mean, _sq = _stat[:, :_c], _stat[:, _c:]
-    # 부동소수 오차로 분산이 음수가 될 수 있음
     return _mean, torch.sqrt((_sq - _mean * _mean).clamp(min=0.0) + floor ** 2)
 
 

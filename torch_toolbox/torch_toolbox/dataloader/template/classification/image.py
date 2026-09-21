@@ -33,16 +33,12 @@ class Classification_Image_Dataset_Config(Classification_Dataset_Config):
 
 @DATASETS.Register_module(OBJECT_TYPE)
 class Classification_Image_Dataset(Classification_Dataset):
-    """폴더 구조 기반 image classification dataset.
+    """폴더 구조 image classification dataset. 항목 = `{"image", "class_id", "category_id"}`.
 
     data_dir/name/
-    ├── id_map.yaml   {class_name: {class_id, category_id}}
-    ├── class_a/image1.jpg, ...
-    └── class_b/...
-
-    초기화 흐름은 부모 Builder에 위임한다.
-    이 클래스는 이미지 파일 스캔(_Scan_samples), 픽셀 읽기(__getitem__),
-    ONNX 메타데이터(Info_for_onnx)만 담당한다.
+    |-- id_map.yaml   (형식은 `_Load_id_map`)
+    |-- class_a/image1.jpg, ...
+    `-- class_b/...
     """
 
     layout: str = "NCHW"
@@ -61,7 +57,6 @@ class Classification_Image_Dataset(Classification_Dataset):
         extensions: list[str] | None = None,
         **kwargs,
     ):
-        # 공통 초기화(id_map 로드, 샘플 스캔)를 부모에 위임
         super().Builder(
             data_dir, name, category,
             id_map_file=id_map_file,

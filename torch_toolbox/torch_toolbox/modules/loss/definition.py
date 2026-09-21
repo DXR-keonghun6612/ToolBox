@@ -18,11 +18,10 @@ CONFIG_NAME = f"{LOSS_NAME}_config"
 @CFGS.Register_module(CONFIG_NAME)
 @dataclass
 class Assemble_Loss_Config(Composable_Config):
-    """여러 Loss를 가중합으로 조합하기 위한 설정.
+    """여러 Loss 의 가중합 Config.
 
     Attributes:
-        sub_loss_coefs: 서브 Loss 이름 → 가중치 계수 매핑.
-            미지정 항목은 forward 시 1.0으로 자동 할당된다.
+        sub_loss_coefs: 서브 Loss 이름 -> 계수. 미지정은 1.0.
     """
 
     config_type: str = CONFIG_NAME
@@ -33,56 +32,40 @@ class Assemble_Loss_Config(Composable_Config):
 
 @LOSSES.Register_module(LOSS_NAME)
 class Assemble_Loss(Composable_Module):
-    """등록된 여러 Loss를 가중합으로 결합하는 컴포저블 모듈.
-
-    pred에 존재하는 키만 계산에 참여한다. pred에 없는 서브 Loss는 silently skip되며,
-    pred에 있지만 target에 없으면 KeyError를 발생시킨다.
-    """
+    """서브 Loss 의 가중합. pred 에 있는 키만 계산."""
 
     def Build(
         self,
         sub_loss_coefs: dict[str, float],
         **sub_modules: Any
     ):
-        """서브 Loss 모듈과 가중치를 초기화한다.
-
-        ModuleDict에 등록해 PyTorch가 파라미터를 추적하도록 하고,
-        _cached_func에 (coef, module) 쌍을 저장해 forward에서 빠르게 접근한다.
-
+        """
         Args:
-            sub_loss_coefs: 서브 Loss 이름 → 가중치 계수.
-            **sub_modules: __Build_from_registry__가 주입한 서브 Loss 인스턴스.
+            sub_loss_coefs: 서브 Loss 이름 -> 계수.
+            **sub_modules: `Build_from_registry` 가 주입한 서브 Loss.
         """
         self.loss_modules = ModuleDict()
         self._cached_func: dict[str, tuple[float, Composable_Module]] = {}
 
         for _name, _module in sub_modules.items():
             _coef = sub_loss_coefs.get(_name, 1.0)
-            # ModuleDict: PyTorch 파라미터 추적용 / _cached_func: forward 빠른 접근용
             self.loss_modules[_name] = _module
             self._cached_func[_name] = (_coef, _module)
 
     def forward(
         self, pred: dict[str, Tensor], target: dict[str, Tensor], **kwarg: Any
     ) -> tuple[Tensor, dict[str, float]]:
-        """가중합 loss를 계산한다.
-
+        """
         Args:
-            pred: 모델 출력 딕셔너리.
-            target: 정답 딕셔너리.
-            **kwarg: 서브 Loss에 그대로 전달되는 부가 데이터(예: 관심영역 mask).
-                비어 있으면 서브 Loss는 (pred, target)만 받은 것과 동일하다.
-                부가 데이터를 넘길 때는 **모든** 서브 Loss가 그 키를 받을 수 있어야 한다
-                (쓰지 않는 Loss는 `**kwarg`로 흘려보내면 된다).
+            pred: 모델 출력. 키 = 서브 Loss 이름.
+            target: 정답. pred 와 같은 키.
+            **kwarg: 모든 서브 Loss 에 그대로 전달 (예 관심영역 mask). 안 쓰는 Loss 는 `**kwarg` 로 받음.
 
         Returns:
-            tuple:
-                - total_loss: 전체 가중합 loss 텐서.
-                - loss_details: 서브 Loss별 raw 값과 가중 적용 값.
-                  키 형식: ``{name}`` (raw), ``{name}_weighted`` (가중치 적용).
+            (가중합 loss, 서브 Loss 별 값). 값의 키는 `{name}` (raw), `{name}_weighted`.
 
         Raises:
-            KeyError: pred에 존재하는 키가 target에 없는 경우.
+            KeyError: pred 에 있는 키가 target 에 없음.
         """
         _loss_details: dict[str, float] = {}
         _device = next(iter(pred.values())).device
@@ -90,7 +73,6 @@ class Assemble_Loss(Composable_Module):
 
         for _k, (_coef, _func) in self._cached_func.items():
             if _k not in pred:
-                # pred에 없는 출력 키는 해당 Loss 계산을 건너뜀
                 continue
             if _k not in target:
                 raise KeyError(

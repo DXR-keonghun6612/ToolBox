@@ -1,3 +1,4 @@
+"""직교 -> 극좌표 샘플링 layer. state = 오프셋 LUT. 측정은 `functional.polar`."""
 from __future__ import annotations
 from dataclasses import dataclass
 import math
@@ -13,8 +14,6 @@ from ..model.definition import Trainable_Model
 
 from .functional.frame import Frame
 from .functional.sample import Gather_points
-
-"""직교 -> 극좌표 샘플링 layer. state = 오프셋 LUT. 측정은 `functional.polar`."""
 
 
 _NAME = "radial"
@@ -45,21 +44,16 @@ class Radial_Config(Composable_Config):
 
 @MODELS.Register_module(_NAME)
 class Radial(Trainable_Model):
-    """이진 마스크 + :class:`Frame` -> ``(B, NR, NT)`` occupancy 분수. backward gather.
+    """이진 마스크 + `Frame` -> `(B, NR, NT)` occupancy 분수. backward gather.
 
-    - 셀마다 자기 좌표에서 마스크를 읽음. forward scatter(픽셀 -> 셀)는 안쪽에서 빈 셀이 가짜
-      구멍이 되고 바깥쪽에서 여러 픽셀이 뭉쳐 진짜 구멍이 흡수됨 (실측 : 224 캔버스에서 안쪽 빈 셀 51%)
-    - occupancy 는 boolean 이 아니라 면적 분수. 바깥쪽 흡수를 분수 하락으로 남김. `sub_per_px` 가
-      손잡이, 늘려도 연산 종류는 그대로고 상수 테이블만 커짐
-    - 원점이 정수(`Frame.origin`)라 샘플 위치 소수부가 상수 -> bilinear 가중치 상수,
-      정수 인덱스만 원점만큼 이동. `GridSample` 없이 `Gather`/`Mul`/`Add`
+    - 셀마다 자기 좌표에서 마스크를 bilinear 로 읽음. 셀당 `sub^2` 표본의 평균 = 면적 분수
+    - 원점이 정수 (`Frame.origin`) 라 소수부, bilinear 가중치는 LUT 상수. 정수 인덱스만 원점만큼 이동.
+      `Gather` / `Mul` / `Add` 만
     - 회전은 theta 축 circular roll. 출력 theta 는 주축 정렬 완료
-    - 반경 격자는 1 u 간격 (입력 `1 / px_size` px), `trust_radius` 까지. 캔버스 크기는 값에 안 남음
-    - 표본 간격은 입력 px 기준 `1 / sub_per_px` 고정. 격자가 바뀌어도 px 당 밀도 불변
-      -> occupancy 분포와 `threshold` 의미 보존
-    - LUT 버퍼는 `persistent=False` 라 state_dict 에 없으나 ONNX 에는 initializer 로 구워짐.
-      `trust_radius`/`NT`/`sub_per_px`/`px_size` 변경 = 재export. 런타임 메모리는
-      `B * NR * NT * sub^2` 에 비례
+    - 반경 격자는 1 u 간격 (입력 `1 / px_size` px), `trust_radius` 까지
+    - 표본 간격은 입력 px 기준 `1 / sub_per_px`
+    - LUT 버퍼는 `persistent=False`. ONNX 에는 initializer. Config 값 변경 = 재export.
+      메모리 `B * NR * NT * sub^2`
     """
 
     _base_col: Tensor
@@ -69,7 +63,7 @@ class Radial(Trainable_Model):
     _theta_idx: Tensor
 
     def Out_channels(self) -> list[int]:
-        """occupancy 격자 하나. 채널 축이 없으므로 r bin 수."""
+        """`[NR]`. 채널 축 없음."""
         return [self.num_radial]
 
     def Build(
@@ -116,7 +110,7 @@ class Radial(Trainable_Model):
         """
         Args:
             mask: (B, 1, H, W) float. 전경 1, 배경 0.
-            frame: :class:`Frame`. `origin` 과 `angle` 을 씀.
+            frame: `origin` 과 `angle` 사용.
 
         Returns:
             (B, NR, NT) float. 셀별 occupancy 분수 [0, 1]. theta 는 주축 정렬 완료.

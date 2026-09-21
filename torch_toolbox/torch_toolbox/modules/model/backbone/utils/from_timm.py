@@ -1,3 +1,4 @@
+"""timm `features_only` 백본 래퍼의 공통 구현. 각 래퍼 파일은 `VARIANTS` 맵, `Literal` 타입, registry 등록만."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -8,14 +9,6 @@ import torch.nn as nn
 
 from ...definition import Trainable_Model, Trainable_Model_Config
 
-"""timm ``features_only`` 백본 래퍼의 공통 계약.
-
-변형(variant) 이름표만 다르고 나머지가 같은 래퍼들이 공유한다. 각 래퍼 파일은
-``VARIANTS`` 맵과 자기 ``Literal`` 타입·레지스트리 등록만 갖는다.
-
-- ``features_only=True`` 백본만 대상. ``timm.create_model`` 을 직접 쓰는 백본(DINO)은 제외
-"""
-
 
 def load_timm_backbone(
     model_name: str,
@@ -23,17 +16,15 @@ def load_timm_backbone(
     pretrained: bool = True,
     **timm_kwargs: Any,
 ) -> nn.Module:
-    """timm 에서 ``features_only`` 백본을 만든다.
-
+    """
     Args:
         model_name: timm 모델명 (태그 포함).
         out_indices: 꺼낼 단 인덱스. None 이면 마지막 단만.
         pretrained: 사전학습 가중치 로드 여부.
-        **timm_kwargs: ``timm.create_model`` 추가 인자. ``pretrained`` 는 넣지 않는다
-            (중복은 호출 전에 ``Timm_Feature_Backbone.Build`` 가 막는다).
+        **timm_kwargs: `timm.create_model` 추가 인자. `pretrained` 제외.
 
     Returns:
-        단별 feature map 리스트를 내는 timm ``FeatureListNet``.
+        단별 feature map 리스트를 내는 timm `FeatureListNet`.
     """
     return timm.create_model(
         model_name,
@@ -46,32 +37,15 @@ def load_timm_backbone(
 
 @dataclass
 class Timm_Feature_Backbone_Config(Trainable_Model_Config):
-    """``Timm_Feature_Backbone`` 래퍼 공통 설정.
-
-    각 래퍼 Config 는 이걸 상속해 ``config_type``·``object_type``·``variant`` 와
-    자기 ``out_indices`` 기본값만 선언한다.
-
-    ``Trainable_Model_Config`` 를 베이스로 두는 이유는 ``lr`` · ``weight_decay`` 다 —
-    모듈 쪽(``Timm_Feature_Backbone``)은 ``Trainable_Model`` 이라 받을 수 있는데 Config 에
-    필드가 없으면 yaml 의 ``lr:`` 이 ``Extract()`` 에서 빠져 **조용히 무시**된다.
-    사전학습 백본은 헤더보다 한 자릿수 낮은 lr 이 필요하므로 이 필드가 실제로 쓰인다.
+    """`Timm_Feature_Backbone` 공통 Config. 래퍼 Config 는 `config_type`, `object_type`, `variant`,
+    `out_indices` 기본값만 선언.
 
     Attributes:
-        pretrained: 사전학습 가중치 로드 여부. 이 래퍼들이 존재하는 이유가 사전학습
-            표현이라 기본이 True 다. False 로 두면 랜덤 초기화 백본이 되는데,
-            ``trainable`` 까지 False 면 랜덤 특징을 고정하는 것이라 아무 에러 없이
-            조용히 학습이 무의미해진다.
-        out_indices: 꺼낼 단 인덱스. 단마다 해상도가 다르므로 소비하는 쪽이 합칠 때
-            stride 를 맞춰야 한다 (``Out_channels()`` 는 단마다 하나씩 낸다).
-        timm_kwargs: ``timm.create_model`` 추가 인자 (``in_chans`` 등).
-            ``pretrained`` 는 위 필드가 정본이라 여기 넣으면 실패한다.
-        trainable_modules: ``trainable`` 이 False 일 때 전체 freeze 후 이 목록만
-            unfreeze. 가중치는 보존한다 (재초기화 아님). 이름은 ``backbone`` 하위
-            모듈 경로이며 접두사로 맞춘다 (예: ConvNeXt ``stages_2`` · ResNet ``layer3``).
-
-            **저수준을 얼리고 고수준을 연다.** 환경 특이성(조명·센서·색)이 배어드는
-            자리는 입력에 가까운 단이고, 과제 특이성이 필요한 자리는 깊은 단이다.
-            거꾸로 두면 학습 환경의 저수준 통계가 구워져 다른 환경에서 무너진다.
+        pretrained: 사전학습 가중치 로드 여부. False + `trainable=False` 면 랜덤 특징 고정.
+        out_indices: 꺼낼 단 인덱스. `Out_channels()`, `Feature_strides()` 가 단마다 하나씩.
+        timm_kwargs: `timm.create_model` 추가 인자 (`in_chans` 등). `pretrained` 는 실패.
+        trainable_modules: `trainable=False` 일 때 전체 freeze 후 unfreeze 할 `backbone` 하위
+            모듈 이름 접두사 (예 ConvNeXt `stages_2`, ResNet `layer3`). 가중치 보존.
     """
 
     trainable: bool = False
@@ -83,19 +57,12 @@ class Timm_Feature_Backbone_Config(Trainable_Model_Config):
 
 
 class Timm_Feature_Backbone(Trainable_Model):
-    """timm ``features_only`` 백본 래퍼의 공통 구현.
-
-    서브클래스는 ``VARIANTS`` 만 채운다. 빌드·forward·채널 노출·부분 freeze 가 여기 있다.
+    """timm `features_only` 백본 래퍼. 서브클래스는 `VARIANTS` 만 채움.
 
     Attributes:
-        VARIANTS: 공개 variant 이름 -> timm 모델명(태그 포함) 맵.
-        frozen_norms: ``train()`` 에서 eval 로 되돌릴 정규화 층.
-
-    Note:
-        ``trainable=False`` 면 running 통계를 갖는 정규화 층(BatchNorm 계열)을
-        ``train()`` 에서도 eval 로 묶는다. ``requires_grad=False`` 는 통계 갱신을
-        막지 못해서, 안 묶으면 "얼렸다" 면서 running 통계만 학습 환경으로 흘러간다 —
-        환경이 바뀌면 그대로 어긋난다. LayerNorm 계열(ConvNeXt·Swin)은 해당 없음.
+        VARIANTS: 공개 variant 이름 -> timm 모델명 (태그 포함).
+        frozen_norms: `train()` 에서 eval 로 되돌리는 정규화 층. `trainable=False` 일 때
+            unfreeze 안 된 구간의 running 통계 보유 층 (BatchNorm 계열).
     """
 
     VARIANTS: ClassVar[dict[str, str]] = {}
@@ -113,7 +80,7 @@ class Timm_Feature_Backbone(Trainable_Model):
 
         self.frozen_norms: list[nn.Module] = []
         if not trainable:
-            # Composable_Module 이 전체 freeze 를 건 뒤라야 부분 unfreeze 가 의미를 갖는다.
+            # super().__init__() 의 전체 freeze 뒤에 부분 unfreeze
             self.frozen_norms = self._Stateful_norms(
                 self._Unfreeze(trainable_modules or []))
             self.train(self.training)
@@ -128,14 +95,13 @@ class Timm_Feature_Backbone(Trainable_Model):
     ) -> None:
         """
         Args:
-            variant: ``VARIANTS`` 의 키.
+            variant: `VARIANTS` 의 키.
             pretrained: 사전학습 가중치 로드 여부.
             out_indices: 꺼낼 단 인덱스. None 이면 마지막 단만.
-            timm_kwargs: ``timm.create_model`` 추가 인자.
+            timm_kwargs: `timm.create_model` 추가 인자.
 
         Raises:
-            ValueError: 알 수 없는 variant 이거나, ``timm_kwargs`` 에 ``pretrained`` 가
-                중복으로 들어온 경우.
+            ValueError: 모르는 variant, 또는 `timm_kwargs` 에 `pretrained`.
         """
         if variant not in self.VARIANTS:
             raise ValueError(
@@ -157,19 +123,16 @@ class Timm_Feature_Backbone(Trainable_Model):
         )
 
     def _Unfreeze(self, prefixes: list[str]) -> set[str]:
-        """지정 접두사에 걸리는 모듈만 다시 학습 대상으로 되돌린다.
-
-        가중치는 건드리지 않는다 — 사전학습 표현을 남겨두고 미세조정하는 것이 목적이다.
+        """접두사에 걸리는 모듈의 `requires_grad` 를 True 로. 가중치는 그대로.
 
         Args:
-            prefixes: ``backbone`` 하위 모듈 이름 접두사 목록.
+            prefixes: `backbone` 하위 모듈 이름 접두사.
 
         Returns:
-            실제로 열린 모듈 이름 집합.
+            열린 모듈 이름 집합.
 
         Raises:
-            ValueError: 어떤 모듈에도 안 걸리는 접두사가 있는 경우. 오타가 조용히
-                "아무것도 안 열림"으로 지나가면 전부 frozen 인 채로 학습이 돈다.
+            ValueError: 어떤 모듈에도 안 걸리는 접두사.
         """
         _names = {_n for _n, _ in self.backbone.named_modules()}
         _missing = [
@@ -193,13 +156,10 @@ class Timm_Feature_Backbone(Trainable_Model):
         return _opened
 
     def _Stateful_norms(self, opened: set[str]) -> list[nn.Module]:
-        """열리지 않은 구간의 running 통계 보유 정규화 층.
+        """`opened` 밖의 running 통계 보유 정규화 층.
 
         Args:
-            opened: ``_Unfreeze`` 가 연 모듈 이름 집합.
-
-        Returns:
-            ``train()`` 에서 eval 로 묶을 모듈 목록.
+            opened: `_Unfreeze` 가 연 모듈 이름 집합.
         """
         return [
             _module for _name, _module in self.backbone.named_modules()
@@ -207,7 +167,7 @@ class Timm_Feature_Backbone(Trainable_Model):
         ]
 
     def train(self, mode: bool = True) -> Timm_Feature_Backbone:
-        """``mode`` 가 True 여도 얼린 정규화 층은 eval 로 되돌린다."""
+        """`mode=True` 여도 `frozen_norms` 는 eval."""
         super().train(mode)
         if mode:
             for _module in self.frozen_norms:
@@ -215,15 +175,11 @@ class Timm_Feature_Backbone(Trainable_Model):
         return self
 
     def Out_channels(self) -> list[int]:
-        """단별 출력 채널. ``feature_info`` 가 선택된 ``out_indices`` 기준으로 들고 있다."""
+        """`out_indices` 단별 출력 채널."""
         return [int(_c) for _c in self.backbone.feature_info.channels()]
 
     def Feature_strides(self) -> list[int]:
-        """단별 출력 stride (입력 대비 축소 배수).
-
-        단마다 해상도가 다르므로 소비하는 쪽(헤더)이 합칠 때 필요하다 — 채널 수만으로는
-        어느 단이 어느 해상도인지 알 수 없다.
-        """
+        """`out_indices` 단별 출력 stride (입력 대비 축소 배수)."""
         return [int(_r) for _r in self.backbone.feature_info.reduction()]
 
     def forward(self, x: torch.Tensor, **kwarg: Any) -> list[torch.Tensor]:

@@ -1,3 +1,4 @@
+"""2D 커널 필터 layer. state = 커널 뱅크."""
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
@@ -12,8 +13,6 @@ from ..definition import Composable_Config
 from ..model.definition import Trainable_Model
 
 from .functional.filter import Depthwise, Log_sharpen_kernel, Sobel_kernels
-
-"""2D 커널 필터 layer. state = 커널 뱅크."""
 
 
 _NAME = "filter"
@@ -42,14 +41,13 @@ class Filter_Config(Composable_Config):
 class Filter(Trainable_Model):
     """채널별 2D 커널 필터. 이름으로 커널을 골라 depthwise conv 한 번.
 
-    - 뱅크 : 커널을 최대 크기로 zero-pad 해 쌓은 ``(K, k, k)``. 입력 채널 수를 모름
-    - 이름은 뱅크를 slice. trace 시점 상수라 fold, 요청 안 한 커널은 계산 안 함
+    - 뱅크 : 커널을 최대 크기로 zero-pad 해 쌓은 `(K, k, k)`. 입력 채널 수를 모름
+    - 이름은 뱅크 slice. trace 시점 상수, 요청 안 한 커널은 계산 안 함
     - reflect 패딩 1회. zero-pad 한 작은 커널은 제 크기 reflect 패딩과 같은 값
 
     이름 :
         sobel_x, sobel_y  Sobel 그래디언트
-        log               샤프닝 `delta - log_strength * LoG(log_sigma)`. 합 1 = DC 보존.
-                          clip 없음 - 정규화와 교환 가능, 엣지 오버슈트 보존
+        log               샤프닝 `delta - log_strength * LoG(log_sigma)`. 합 1, clip 없음
     """
 
     bank: Tensor
@@ -69,7 +67,6 @@ class Filter(Trainable_Model):
         }
         _k = max(_t.shape[-1] for _t in _kernels.values())
         self.names = tuple(_kernels)
-        # config 에서 재생성되므로 state_dict 에 넣지 않음
         self.register_buffer(
             "bank",
             torch.stack([F.pad(_t, ((_k - _t.shape[-1]) // 2,) * 4) for _t in _kernels.values()]),

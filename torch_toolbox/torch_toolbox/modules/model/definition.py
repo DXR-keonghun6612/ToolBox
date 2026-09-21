@@ -7,11 +7,11 @@ from ..definition import Composable_Config, Composable_Module
 
 @dataclass
 class Trainable_Model_Config(Composable_Config):
-    """학습 하이퍼파라미터가 결합된 모델 설정 노드.
+    """학습 하이퍼파라미터를 갖는 모델 Config.
 
     Attributes:
-        lr: 모듈별 학습률 override. None이면 Assembler의 base_lr 사용.
-        weight_decay: 모듈별 weight decay override. None이면 base_weight_decay 사용.
+        lr: 모듈별 학습률 override. None 이면 부모 (최상위는 Assembler 의 base_lr).
+        weight_decay: 모듈별 weight decay override. None 이면 부모.
     """
 
     lr: float | None = None
@@ -19,11 +19,11 @@ class Trainable_Model_Config(Composable_Config):
 
 
 class Trainable_Model(Composable_Module):
-    """모듈별 학습률·weight decay 재정의를 지원하는 학습용 모델 추상 클래스.
+    """모듈별 lr, weight_decay override 를 갖는 학습 모델의 추상 기반.
 
     Attributes:
-        lr: 이 모듈의 학습률 override. None이면 Assembler의 base_lr 사용.
-        weight_decay: 이 모듈의 weight decay override. None이면 base_weight_decay 사용.
+        lr: `Trainable_Model_Config.lr`.
+        weight_decay: `Trainable_Model_Config.weight_decay`.
     """
 
     def __init__(
@@ -34,8 +34,7 @@ class Trainable_Model(Composable_Module):
         weight_decay: float | None = None,
         **build_kwarg
     ) -> None:
-        # Build()가 super().__init__() 내부에서 호출되므로
-        # 서브클래스의 Build()가 lr / weight_decay를 참조할 경우를 위해 먼저 할당한다.
+        # super().__init__() 이 Build() 호출. lr / weight_decay 는 그 전에 할당
         self.lr = lr
         self.weight_decay = weight_decay
         super().__init__(name, trainable, **build_kwarg)
@@ -47,20 +46,17 @@ class Trainable_Model(Composable_Module):
         group_map: dict[tuple[int, int], list[Any]],
         scaled_value: int = 10 ** 10
     ) -> None:
-        """파라미터 그룹 맵을 재귀적으로 구성한다.
+        """파라미터 그룹 맵 재귀 구성.
 
-        모듈 트리를 DFS로 순회하며 (scaled_lr, scaled_wd) 키별로 파라미터를 분류한다.
-        자식이 Trainable_Model이면 해당 모듈의 lr/wd로 재귀하고,
-        일반 nn.Module이면 현재 lr/wd로 파라미터를 수집한다.
-
-        float 비교 오차를 피하기 위해 lr·wd에 scaled_value를 곱한 정수를 키로 사용한다.
+        모듈 트리 DFS. 자식이 `Trainable_Model` 이면 그 모듈의 lr / wd 로 재귀,
+        일반 `nn.Module` 이면 현재 lr / wd 로 하위 파라미터 전부 수집.
 
         Args:
-            base_lr: 부모로부터 상속된 학습률.
-            base_weight_decay: 부모로부터 상속된 weight decay.
-            group_map: (scaled_lr, scaled_wd) → 파라미터 리스트 누적 맵.
-                호출자가 빈 dict를 생성해 전달하고, 재귀 호출이 in-place로 채운다.
-            scaled_value: lr·wd를 정수 키로 변환하는 배율. 기본값 10^10.
+            base_lr: 부모의 학습률.
+            base_weight_decay: 부모의 weight decay.
+            group_map: `(int(lr * scaled_value), int(wd * scaled_value))` -> 파라미터 리스트.
+                호출자가 빈 dict 를 넘기고 in-place 로 채워짐.
+            scaled_value: lr, wd 를 정수 키로 바꾸는 배율.
         """
         if (_lr := getattr(self, "lr", None)) is None:
             _lr = base_lr
@@ -78,10 +74,8 @@ class Trainable_Model(Composable_Module):
 
         for _module in self.children():
             if isinstance(_module, Trainable_Model):
-                # Trainable_Model 자식: 자체 lr/wd로 재귀하여 별도 그룹 구성
                 _module.Get_group_map(_lr, _wd, group_map, scaled_value)
             else:
-                # 일반 nn.Module: 현재 lr/wd 그룹에 하위 파라미터 전부 포함
                 _standard_params = [
                     _p for _p in _module.parameters(recurse=True) if _p.requires_grad
                 ]

@@ -1,9 +1,8 @@
+"""화소 단위 색 연산. 이웃 없음."""
 from __future__ import annotations
 
 import torch
 from torch import Tensor
-
-"""화소 단위 색 연산. 이웃 없음."""
 
 
 LUMA_REC601 = (0.299, 0.587, 0.114)
@@ -46,7 +45,7 @@ def Color_log_ratio(x: Tensor, *, eps: float) -> Tensor:
 
     Args:
         x: (N, 3, H, W) RGB [0, 1].
-        eps: 분자, 분모에 더하는 하한. 저휘도에서 비가 잡음이 되는 것 방지.
+        eps: 분자, 분모에 더하는 하한.
 
     Returns:
         (N, 2, H, W). [log(G/R), log(B/G)].

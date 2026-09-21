@@ -14,7 +14,7 @@ graph RL
 
 | 자리 | 아는 것 | 모르는 것 |
 | --- | --- | --- |
-| `utils/from_timm.py` | `Timm_Feature_Backbone` : timm `features_only` 빌드, forward, `Out_channels`, `Feature_strides`, 부분 unfreeze (`trainable_modules`). frozen 이면 BatchNorm 계열을 `train()` 에서도 eval 로 고정 | variant 이름 |
+| `utils/from_timm.py` | `Timm_Feature_Backbone` : timm `features_only` 공통 구현 (빌드, forward, 계약 메서드, 부분 unfreeze) | variant 이름 |
 | `convnext.py`, `resnet.py` | `VARIANTS` : 공개 이름 -> timm 모델명 (태그 포함) | 빌드, forward |
 | `dino.py` | DINO ViT 래퍼. `Trainable_Model` 직접 상속 | `Timm_Feature_Backbone` |
 | `__init__.py` | `BACKBONES`, `BACKBONE_CFGS` 타입 묶음 | - |

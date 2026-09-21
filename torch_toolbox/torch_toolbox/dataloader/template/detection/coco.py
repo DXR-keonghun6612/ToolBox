@@ -24,7 +24,6 @@ class COCO_Dataset(Custom_Dataset):
         self.data_dir = data_dir
         self.num_classes = kwargs.get("num_classes", 80)
         self.samples: list = []
-        # TODO: 데이터 로드 구현
 
     def __len__(self) -> int:
         return len(self.samples)

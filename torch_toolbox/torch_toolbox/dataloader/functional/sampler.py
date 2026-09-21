@@ -6,13 +6,11 @@ from torch.utils.data import Sampler
 
 
 class PK_Batch_Sampler(Sampler[list[int]]):
-    """P-class × K-sample batch sampler (metric learning용).
-
-    매 배치마다 P개의 class를 무작위 선택하고, 각 class에서 K개의 샘플을 추출한다.
+    """배치마다 class P 개 무작위 선택, class 당 표본 K 개. 표본이 K 미만인 class 는 중복 추출.
 
     Attributes:
-        P: 배치당 선택할 class 수.
-        K: class당 선택할 sample 수.
+        P: 배치당 class 수.
+        K: class 당 표본 수.
         batch_size: P * K.
     """
 
@@ -51,7 +49,6 @@ class PK_Batch_Sampler(Sampler[list[int]]):
             _batch: list[int] = []
             for _cid in _selected:
                 _pool = self._cls_to_idx[_cid]
-                # pool < K이면 중복 허용 오버샘플링으로 K개 채움
                 _batch.extend(
                     self._rng.sample(_pool, self.K) if len(_pool) >= self.K
                     else self._rng.choices(_pool, k=self.K)

@@ -1,3 +1,4 @@
+"""정렬 좌표 `(u, v)` (`Frame_coords`, 무차원, 원점 centroid) 측정. 리덕션과 닫힌 해로만. 길이 출력은 u."""
 from __future__ import annotations
 import math
 
@@ -5,21 +6,14 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-"""정렬 좌표 ``(u, v)`` 측정. skimage `regionprops` 없이 리덕션과 닫힌 해로만.
 
-- 좌표는 `Frame_coords` 의 무차원 ``(u, v)``. 원점이 centroid 라 1차 모멘트는 항상 0
-- 길이 출력은 도메인 단위 u. 입력 px 로 잰 양은 `px_size` 를 곱함
-- FP16 : px^2 를 만들지 않음. 면적은 전경 비율에서 곧장 sqrt, 길이는 무차원 좌표로 재고 `trust_radius` 를
-  되곱함
-"""
-
-# 면적 항은 sqrt. 전부 길이 차원이어야 나눗값 하나로 정규화
+# 면적 항은 sqrt (길이 차원)
 SIZE_NAMES  = ("area_sqrt", "perimeter", "major", "minor", "bbox_u", "bbox_v",
                "area_swept_sqrt")
 RATIO_NAMES = ("bbox_aspect", "axis_ratio", "extent", "fill_ratio", "circularity")
 POS_NAMES   = ("centroid_du", "centroid_dv")
 
-_AREA_EPS = 1e-4         #: 전경 화소 비율 하한. 빈 마스크 가드
+_AREA_EPS = 1e-4         #: 전경 화소 비율 하한
 _DIV_EPS = 1e-12         #: 비율 분모 하한
 
 
@@ -33,11 +27,9 @@ def Region_scalars(
 ) -> Tensor:
     """크기 7 + 비율 5 + 위치 2 스칼라. 전부 u 또는 무차원 비.
 
-    - convex hull 은 ONNX 표현 불가 -> `area_swept` (반경 프로파일 반음적분 `0.5 r_outer^2 dtheta`)
-      와 `fill_ratio = area / area_swept`. 의미역이 같고 구멍에 민감
-    - 둘레 = morphological gradient (dilate - erode) 의 전경 화소 수 x `px_size`. skimage 와 값은 다르나
-      자기일관적이고 구멍 둘레도 셈. 화소 수는 경계 길이에 1차 비례, 폭 2 px 안팎 구조에서 포화
-    - major/minor 는 축 이름이 아니라 분산 크기순. 근정사각에서 주축각이 90도 튀어도 불변
+    - `area_swept` = 반경 프로파일 적분 `0.5 r_outer^2 dtheta` (convex hull 대용). `fill_ratio = area / area_swept`
+    - 둘레 = morphological gradient (dilate - erode) 전경 화소 수 x `px_size`. 구멍 둘레 포함
+    - major / minor 는 분산 크기순
 
     Args:
         mask: (B, 1, H, W) float.
@@ -60,7 +52,7 @@ def Region_scalars(
     _ero = -F.max_pool2d(-mask, 3, stride=1, padding=1)
     _perimeter = (_dil - _ero).sum(dim=(1, 2, 3)) * px_size
 
-    # u, v 가 주축 정렬이라 이것이 회전 bbox
+    # 주축 정렬 bbox
     _big = torch.full_like(u, 1e9)
     _hit = _m > 0
     _umin = torch.where(_hit, u, _big).amin(dim=(1, 2))
@@ -75,7 +67,7 @@ def Region_scalars(
     _major = 4.0 * torch.maximum(_lu, _lv).clamp_min(0).sqrt() * _norm
     _minor = 4.0 * torch.minimum(_lu, _lv).clamp_min(0).sqrt() * _norm
 
-    # Sum(.) dtheta = mean(.) 2pi 라 theta bin 수가 사라짐
+    # Sum(.) dtheta = mean(.) 2pi
     _ro = r_outer / _norm
     _swept_sqrt = (math.pi * (_ro * _ro).mean(dim=1)).clamp_min(0).sqrt() * _norm
 
@@ -94,18 +86,14 @@ def Region_scalars(
         ],
         dim=1,
     )
-    # centroid 가 원점이라 bbox 중심 오프셋이 곧 비대칭 신호
+    # bbox 중심 오프셋 (원점 = centroid)
     _pos = torch.stack(
         [-(_umax + _umin) / 2.0 * _norm, -(_vmax + _vmin) / 2.0 * _norm], dim=1)
     return torch.cat([_size, _ratio, _pos], dim=1)
 
 
 def Chirality_moments(mask: Tensor, u: Tensor, v: Tensor) -> Tensor:
-    """정렬 좌표 좌우/상하 불균형 + 3차 중심 모멘트.
-
-    - 상하 불균형이 카이랄(거울상 부호 반전) 신호. 정렬이 회전만 하고 반사를 안 써서 보존
-    - 불균형은 카운트 차가 아니라 비율. FP16 은 2048 까지만 정수 정확, 큰 카운트 차는 상쇄 소거
-    - 3차 모멘트는 무차원 좌표에서. px 3제곱은 FP16 최대 초과
+    """정렬 좌표 좌우 / 상하 불균형 (전경 비율) + 3차 중심 모멘트 (무차원). 거울상에서 부호 반전.
 
     Args:
         mask: (B, 1, H, W) float. 전경 1, 배경 0.

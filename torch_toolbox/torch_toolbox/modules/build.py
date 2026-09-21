@@ -23,17 +23,14 @@ MODULES = (
 
 
 def _Resolve_term(term: Any, built: dict[str, Any], context: dict[str, Any] | None) -> int:
-    """차원 표현식의 항 하나를 정수로 해석한다.
+    """차원 표현식의 항 하나 -> 정수.
 
     지원 형태::
 
         768              상수
-        "$feat_dim"      외부 context 값 (dataset 등 조립 밖에서 오는 차원)
-        "backbone"       **같은 계층**에서 이미 만들어진 모듈의 Out_channels() 마지막 항목
-        "backbone[0]"    같은 모듈의 특정 출력 단
-
-    이름만 쓰면 마지막 항목인 이유: 다단 feature 를 내는 백본을 받는 쪽은 관례적으로
-    마지막 단을 쓴다(모델 forward 의 ``feat[-1]`` 과 같은 규약).
+        "$feat_dim"      context 값
+        "backbone"       같은 계층에서 먼저 만들어진 모듈의 `Out_channels()[-1]`
+        "backbone[0]"    특정 출력 단
     """
     if isinstance(term, int):
         return term
@@ -62,15 +59,12 @@ def _Resolve_term(term: Any, built: dict[str, Any], context: dict[str, Any] | No
 
 
 def _Resolve_value(value: Any, built: dict[str, Any], context: dict[str, Any] | None) -> Any:
-    """meta 값 하나를 해석한다.
+    """meta 값 하나 해석. dict / list 안은 재귀, 그 외 값은 그대로.
 
-    두 형태를 지원한다::
+    지원 형태::
 
-        {"sum": [...]}   항들을 더해 정수로 (차원 산술)
-        "$key"           context 값을 **그대로** 치환 (타입 제한 없음 — 정수, 리스트 등)
-
-    dict/list 안에도 재귀한다 — ``timm_kwargs.in_chans`` 처럼 중첩된 자리에서
-    참조하는 경우가 있다. 그 외 값은 손대지 않는다.
+        {"sum": [...]}   항의 합 (정수)
+        "$key"           context 값 그대로 (타입 제한 없음)
     """
     if isinstance(value, dict) and set(value) == {"sum"}:
         return sum(_Resolve_term(_t, built, context) for _t in value["sum"])
@@ -83,7 +77,6 @@ def _Resolve_value(value: Any, built: dict[str, Any], context: dict[str, Any] | 
                 f"(현재 context 키: {sorted(context) if context else []})"
             )
         return context[_key]
-    # 중첩 구조 안에서도 참조가 풀려야 한다 (예: timm_kwargs.in_chans).
     if isinstance(value, dict):
         return {_k: _Resolve_value(_v, built, context) for _k, _v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -94,45 +87,33 @@ def _Resolve_value(value: Any, built: dict[str, Any], context: dict[str, Any] | 
 def _Resolve_meta(
     meta: dict[str, Any], built: dict[str, Any], context: dict[str, Any] | None
 ) -> dict[str, Any]:
-    """meta 의 각 값을 :func:`_Resolve_value` 로 해석한다.
-
-    config 원본은 건드리지 않는다 — 표현식이 그대로 남아 있어야 "이 값이 어디서
-    왔는지"가 config 에 기록으로 남고, resume 시에도 같은 규칙으로 다시 풀린다.
-    """
+    """meta 의 각 값을 `_Resolve_value` 로 해석한 새 dict. 원본은 안 바꿈."""
     return {_k: _Resolve_value(_v, built, context) for _k, _v in meta.items()}
 
 
 def Build_from_registry(
     config: MODULES_CONFIG, registry: Registry, context: dict[str, Any] | None = None,
 ) -> MODULES:
-    """Config 트리를 재귀적으로 순회하며 모듈을 조립한다.
+    """Config 트리 재귀 조립.
 
-    Composable_Config이면 sub_module_meta의 각 항목을 CFGS로 인스턴스화한 뒤
-    재귀 빌드하고, 결과를 상위 모듈의 Build(**sub_modules)에 키워드 인자로 주입한다.
-    리프 Config는 재귀 없이 바로 인스턴스화한다.
-
-    **동일 계층 차원 해석**: 형제 모듈을 선언 순서대로 만들면서, 뒤 형제의 차원 표현식이
-    앞 형제의 ``Out_channels()`` 를 참조할 수 있다. 여기에 외부 값(``context``)을 더해
-    ``in_channels: {sum: [backbone, $feat_dim]}`` 같은 선언이 성립한다. 차원을 config 에
-    숫자로 중복 기입하지 않으면서, 어떻게 도출되는지는 config 에 남는다.
+    `Composable_Config` 면 `sub_module_meta` 를 선언 순서대로 빌드해 부모 `Build(**sub_modules)` 에 주입.
+    뒤 형제의 차원 표현식은 앞 형제의 `Out_channels()` 와 `context` 로 해석
+    (예 `in_channels: {sum: [backbone, $feat_dim]}`).
 
     Args:
         config: 빌드할 모듈의 Config.
-        registry: 대상 도메인 레지스트리 (MODELS, LOSSES 등).
-        context: 조립 밖에서 오는 차원 값 (예: ``{"feat_dim": 695}``). ``$키`` 로 참조한다.
+        registry: 대상 도메인 registry (`MODELS`, `LOSSES` 등).
+        context: 조립 밖에서 오는 값 (예 `{"feat_dim": 695}`). `$키` 로 참조.
 
     Returns:
-        조립 완료된 Composable_Module 인스턴스.
+        조립된 `Composable_Module`.
     """
     _sub_kwargs = {}
 
     if isinstance(config, Composable_Config):
-        # 자식 먼저 빌드: 부모의 Build()가 서브모듈을 **kwargs로 받기 때문
         for _k, _meta in config.sub_module_meta.items():
-            # 같은 계층에서 이미 만들어진 형제(_sub_kwargs)와 context 로 차원 표현식을 푼다
             _meta = _Resolve_meta(_meta, _sub_kwargs, context)
             _sub_cfg = cast(Composable_Config, CFGS.Get(_meta["config_type"])(**_meta))
             _sub_kwargs[_k] = Build_from_registry(_sub_cfg, registry, context)
 
-    # 평탄화된 하이퍼파라미터 + 재귀 빌드된 서브모듈을 함께 생성자에 주입
     return registry.Get(config.object_type)(**config.Extract(), **_sub_kwargs)

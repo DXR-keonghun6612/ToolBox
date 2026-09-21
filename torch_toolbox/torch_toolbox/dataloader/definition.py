@@ -13,17 +13,15 @@ from .. import Mode
 
 @dataclass
 class Dataset_Config(Base_Config):
-    """데이터셋 생성에 필요한 설정.
-
-    data_kwargs는 Extract() 시 언패킹되어 Builder()에 개별 키워드 인자로 전달된다.
+    """데이터셋 Config.
 
     Attributes:
-        config_type: CFGS 레지스트리 조회 키.
-        object_type: DATASETS 레지스트리 조회 키.
-        data_dir: 데이터셋 루트 디렉토리 경로.
+        config_type: `CFGS` 조회 키.
+        object_type: `DATASETS` 조회 키.
+        data_dir: 데이터셋 루트.
         name: 데이터셋 이름.
-        category: 사용할 카테고리 서브셋.
-        data_kwargs: 서브클래스별 추가 설정. Extract() 시 언패킹됨.
+        category: 카테고리 서브셋.
+        data_kwargs: 서브클래스별 추가 설정. `Extract()` 에서 언패킹, `Builder()` 키워드 인자.
     """
 
     __unpack_extract__: ClassVar[set[str]] = {"data_kwargs"}
@@ -39,21 +37,17 @@ class Dataset_Config(Base_Config):
 
 @dataclass
 class Dataloader_Config(Base_Config):
-    """DataLoader 생성에 필요한 설정.
-
-    데이터셋은 dataset_meta dict로만 보유한다.
-    Build_dataset 단계에서 CFGS 레지스트리를 통해 Dataset_Config를 생성한다.
-    collate_fn은 레지스트리 키 문자열로 저장하고, Build_dataloader에서 함수로 변환한다.
+    """DataLoader Config.
 
     Attributes:
         batch_size: 배치 크기.
-        num_workers: DataLoader 워커 수.
-        shuffle: 에폭마다 데이터 셔플 여부. DDP 환경에서는 무시된다.
-        drop_last: 마지막 불완전 배치 제거 여부.
-        pin_memory: 핀 메모리 사용 여부.
-        collate_fn: DATALOADER_FN 레지스트리 키. None이면 기본 collate 사용.
-        pk_sampler: PK 샘플러 설정 딕셔너리. 설정 시 단일 GPU TRAIN에서 적용.
-        dataset_meta: Dataset_Config 생성에 사용하는 raw dict.
+        num_workers: 워커 수.
+        shuffle: 에폭마다 셔플. DDP 에서는 `DistributedSampler` 가 대신함.
+        drop_last: 마지막 불완전 배치 제거.
+        pin_memory: 핀 메모리.
+        collate_fn: `DATALOADER_FN` 키. None 이면 기본 collate.
+        pk_sampler: `PK_Batch_Sampler` 인자 (`P`, `K`, `num_batches`, `seed`). 단일 GPU TRAIN 에서만 적용.
+        dataset_meta: `Dataset_Config` raw dict. `Build_dataloader` 가 `CFGS` 로 인스턴스화.
     """
 
     __exclude_extract__: ClassVar[set[str]] = {"pk_sampler", "dataset_meta"}
@@ -69,15 +63,12 @@ class Dataloader_Config(Base_Config):
 
 
 class Custom_Dataset(Dataset):
-    """프레임워크 데이터셋 추상 기반 클래스.
-
-    서브클래스는 Builder(), __len__(), __getitem__()을 구현한다.
-    ONNX export가 필요한 경우 Info_for_onnx()도 구현한다.
+    """데이터셋 추상 기반. 서브클래스는 `Builder`, `__len__`, `__getitem__`, (export 시) `Info_for_onnx` 구현.
 
     Attributes:
-        layout: 데이터 레이아웃 설명 (예: "NCHW"). ONNX export 메타데이터용.
-        data_format: 데이터 포맷 설명 (예: "RGB_uint8"). ONNX export 메타데이터용.
-        mode: 현재 데이터셋의 실행 mode (train / val / test).
+        layout: 데이터 레이아웃 (예 "NCHW"). ONNX export 메타데이터.
+        data_format: 데이터 포맷 (예 "RGB_uint8"). ONNX export 메타데이터.
+        mode: 실행 mode.
     """
 
     layout: str = ""
@@ -88,15 +79,12 @@ class Custom_Dataset(Dataset):
         self.Builder(**kwargs)
 
     def Builder(self, data_dir: str, name: str, category: str, **kwargs):
-        """데이터셋을 초기화한다.
-
-        Dataset_Config.Extract()의 결과가 그대로 전달된다.
-
+        """
         Args:
-            data_dir: 데이터셋 루트 디렉토리 경로.
-            name: 데이터셋 이름 (예: "imagenet").
-            category: 사용할 카테고리 서브셋 (예: "all").
-            **kwargs: Dataset_Config의 data_kwargs에서 언패킹된 추가 인자.
+            data_dir: 데이터셋 루트.
+            name: 데이터셋 이름.
+            category: 카테고리 서브셋.
+            **kwargs: `Dataset_Config.data_kwargs`.
         """
         raise NotImplementedError
 
@@ -112,42 +100,16 @@ class Custom_Dataset(Dataset):
         dict[str, Any],
         dict[str, Any],
     ]:
-        """ONNX export에 필요한 정보를 반환한다.
-
-        각 구체 데이터셋이 직접 구현해야 한다.
+        """ONNX export 정보.
 
         Returns:
-            tuple:
-                - preprocess_layer: 모델 앞에 융합할 전처리 레이어. 없으면 None.
-                - dummy_inputs: torch.onnx.export에 전달할 더미 입력 텐서 튜플.
-                  입력이 여러 개면 순서대로 나열한다.
-                - onnx_kwargs: torch.onnx.export에 전달할 추가 키워드 인자.
-                  ``input_names``, ``output_names``, ``dynamic_shapes`` 등을 포함한다.
-                - runtime_kwargs: ``_rt_cfg``에 병합되는 TensorRT 런타임 설정.
-                  반드시 ``input_profiles``와 ``output_profiles`` 키를 포함해야 하며,
-                  각 항목은 텐서 하나에 대응한다. min/opt/max_shape 모두 필수::
+            (preprocess_layer, dummy_inputs, onnx_kwargs, runtime_kwargs).
 
-                      {
-                          "input_profiles": [
-                              {
-                                  "name":      str,        # input_names와 일치
-                                  "dtype":     str,        # 예: "float32", "uint8"
-                                  "min_shape": list[int],  # 필수
-                                  "opt_shape": list[int],  # 필수
-                                  "max_shape": list[int],  # 필수
-                              },
-                              ...
-                          ],
-                          "output_profiles": [
-                              {
-                                  "name":      str,        # output_names와 일치
-                                  "dtype":     str,
-                                  "min_shape": list[int],  # 필수
-                                  "opt_shape": list[int],  # 필수
-                                  "max_shape": list[int],  # 필수
-                              },
-                              ...
-                          ],
-                      }
+            - preprocess_layer: 모델 앞에 붙일 전처리. 없으면 None
+            - dummy_inputs: `torch.onnx.export` 더미 입력. 입력 순서대로
+            - onnx_kwargs: `torch.onnx.export` 추가 인자 (`input_names`, `output_names`, `dynamic_shapes` 등)
+            - runtime_kwargs: TensorRT 런타임 설정. `input_profiles`, `output_profiles` 필수.
+              항목은 텐서 하나 = `{"name", "dtype", "min_shape", "opt_shape", "max_shape"}`,
+              `name` 은 `input_names` / `output_names` 와 일치
         """
         raise NotImplementedError

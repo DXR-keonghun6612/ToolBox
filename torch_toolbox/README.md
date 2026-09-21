@@ -38,7 +38,7 @@ graph RL
 | `Composable_Config.sub_module_meta` + `Build_from_registry` | 하위 Config 선언, 자식 먼저 재귀 빌드 후 부모 `Build(**sub_modules)` 에 주입 | `modules`, `runner/supervised` |
 | `Trainable_Model` | 모듈별 lr, weight_decay override -> 파라미터 그룹 | `modules`, `optim` |
 
-## 작업 흐름
+## 워크플로
 
 | 대상 | 담는 것 | 추가 의존 |
 | --- | --- | --- |

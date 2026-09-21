@@ -11,19 +11,24 @@
 - 갈래 : 전부 제거 / 조건 확인 후 유지 / 제약을 주석으로만
 - 정해지는 조건 : DINOv3 라이선스 원문 확인
 
-### 백본 계약에 입력 크기가 없음
-
-- 걸리는 것 : ViT 계열은 빌드 시 `img_size` 로 pos-embed 를 굽는데 계약 (`Out_channels`, `Feature_strides`,
-  `forward`) 에 그 값이 없음. 소비처 (`Segmentor._Validate_backbone`) 가 `backbone.backbone.patch_embed.img_size`
-  를 직접 뒤지고, 그 경로를 맞추려 conv 인코더가 가짜 `.backbone` 속성을 둠
-- 목표 : 소비처가 래퍼 내부 구조를 모름. 계약 메서드만
-- 갈래 : `Input_size() -> tuple[int, int] | None` 추가, conv 계열은 None / 래퍼가 빌드 시 `img_size` 를 받아 스스로 검증
-- 정해지는 조건 : ViT 백본이 다시 쓰이는지. 지금 소비처는 `residual_encoder`, `convnext` 뿐
-
 ## 합의 사항
+
+### 백본 계약에 입력 크기를 안 둠
+
+- 계약은 `Out_channels`, `Feature_strides`, `forward` 셋. 입력 크기는 소비처가 export 시점에만 앎
+- ViT 래퍼는 `dynamic_img_size=True`. pos-embed 를 forward 마다 새 격자로 보간 - 토큰 수가
+  입력 크기를 따라 변하고 patch 크기는 고정 (patch-embed 가중치)
+- 학습 격자와 크게 다른 입력은 보간 근사라 품질이 떨어질 수 있음. 막지는 않음
+- 소비처가 `backbone.backbone.patch_embed` 를 뒤지는 검사, 그 경로를 맞추려던 conv 인코더의
+  가짜 `.backbone` 속성은 없앰
 
 ### 백본 래퍼는 쓰는 것만
 
 - 현재 : `dino`, `convnext`, `resnet`
 - 되살리는 비용 : `Timm_Feature_Backbone` 상속 + `VARIANTS` 맵 + Config 세 줄
 - 되살릴 때 확인 : timm 모델명, 태그 유효성 (`timm.list_pretrained(arch)`. 버전마다 바뀜), 가중치 라이선스
+
+## 진행 계획
+
+- [ ] `dino.py` : `timm.create_model` 에 `dynamic_img_size=True`. `timm_kwargs.img_size` 는
+      pos-embed 초기 격자로만 남음. 학습 크기와 다른 입력으로 forward 되는지 확인

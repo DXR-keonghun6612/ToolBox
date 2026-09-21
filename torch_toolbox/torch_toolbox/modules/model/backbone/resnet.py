@@ -31,12 +31,10 @@ ResNetVariantType = Literal[
 @CFGS.Register_module(CONFIG_NAME)
 @dataclass
 class ResNet_Config(Timm_Feature_Backbone_Config):
-    """ResNet 백본 설정. 공통 필드는 베이스가 소유한다.
-
+    """
     Attributes:
-        variant: ``_RESNET_VARIANTS`` 의 키.
-        out_indices: 단 1~4. stride 는 순서대로 4 / 8 / 16 / 32.
-            0 을 넣으면 stem(stride 2)까지 나온다.
+        variant: `_RESNET_VARIANTS` 의 키.
+        out_indices: 기본 단 1 ~ 4. stride 4 / 8 / 16 / 32. 0 은 stem (stride 2).
     """
 
     config_type: str = CONFIG_NAME
@@ -48,14 +46,6 @@ class ResNet_Config(Timm_Feature_Backbone_Config):
 
 @MODELS.Register_module(MODEL_NAME)
 class ResNet(Timm_Feature_Backbone):
-    """timm 기반 ResNet 계열 백본 래퍼.
-
-    ``trainable_modules`` 로 가리킬 최상위 모듈: ``conv1`` · ``bn1`` ·
-    ``layer1`` ~ ``layer4``.
-
-    Note:
-        BatchNorm 계열이라 running 통계를 갖는다 — ``trainable=False`` 면 베이스가
-        얼린 구간의 정규화 층을 eval 로 묶는다 (근거는 ``Timm_Feature_Backbone``).
-    """
+    """`trainable_modules` 최상위 모듈: `conv1`, `bn1`, `layer1` ~ `layer4`. 정규화는 BatchNorm."""
 
     VARIANTS = _RESNET_VARIANTS

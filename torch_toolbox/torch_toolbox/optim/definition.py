@@ -7,15 +7,15 @@ from python_toolbox.project import Base_Config
 
 @dataclass
 class Optim_Node_Config(Base_Config):
-    """옵티마이저·스케줄러 공동 설정.
+    """옵티마이저, 스케줄러 Config.
 
     Attributes:
-        optim_name: torch.optim 클래스명. None이면 빌드 시 오류.
-        base_lr: 기본 학습률. 모듈별 lr는 Get_group_map으로 조정된다.
+        optim_name: `torch.optim` 클래스명. 필수.
+        base_lr: 기본 학습률. 모듈별 override 는 `Trainable_Model.Get_group_map`.
         base_weight_decay: 기본 weight decay.
-        optim_kwargs: lr·weight_decay를 제외한 옵티마이저 추가 인자.
-        scheduler_name: torch.optim.lr_scheduler 또는 SCHEDULER 등록명. None이면 미사용.
-        scheduler_kwargs: optimizer를 제외한 스케줄러 추가 인자.
+        optim_kwargs: lr, weight_decay 제외 옵티마이저 인자.
+        scheduler_name: `torch.optim.lr_scheduler` 클래스명 또는 `SCHEDULER` 키. None 이면 없음.
+        scheduler_kwargs: optimizer 제외 스케줄러 인자.
     """
 
     optim_name: str | None = None

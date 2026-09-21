@@ -5,19 +5,15 @@ def relative_error_by_dot(
     target: torch.Tensor,
     alpha: float = 1.0
 ) -> torch.Tensor:
-    """ ### 벡터 간 내적 기반 상대 오차를 계산하는 함수
+    """두 벡터 사이 각도 (정규화 후 내적의 acos).
 
-    입력된 두 벡터를 정규화한 뒤, 내적(dot product)을 통해 각도 기반
-    오차를 계산합니다. 결과는 입력된 스케일(alpha) 값만큼 조정됩니다.
+    Args:
+        predict: (..., D) 예측 벡터.
+        target: (..., D) 정답 벡터.
+        alpha: 결과에 곱하는 배율.
 
-    ------------------------------------------------------------------
-    ### Args
-    - predict: 예측 벡터 텐서 (torch.Tensor)
-    - target: 정답 벡터 텐서 (torch.Tensor)
-    - alpha: 결과 오차에 곱할 스케일 인자 (기본값 = 1.0)
-
-    ### Returns
-    - torch.Tensor: 각도 기반 상대 오차 (radian 단위)
+    Returns:
+        (...,) radian.
     """
     _pre = predict / (predict.norm(dim=-1, keepdim=True) + 1e-8)
     _tgt = target / (target.norm(dim=-1, keepdim=True) + 1e-8)
@@ -25,18 +21,18 @@ def relative_error_by_dot(
     return alpha * torch.acos(_dot)
 
 def relative_error_by_mse(
-    predict: torch.Tensor,  # 3 = tx, ty, tz
+    predict: torch.Tensor,
     target: torch.Tensor
 ) -> torch.Tensor:
+    """(..., 3) 병진 벡터 차의 L2 norm -> (...,)."""
     _diff = predict - target
     return torch.norm(_diff, dim=-1)
 
 def relative_rotation_from_matrix(
-    predict: torch.Tensor,  # matrix -> n, 3, 3
+    predict: torch.Tensor,
     target: torch.Tensor
 ) -> torch.Tensor:
-    # TODO: This function is not tested.
-    # Please write and run appropriate tests.
+    """(N, 3, 3) 회전 행렬 사이 각도 -> (N,) radian."""
     _diff = torch.matmul(predict.transpose(-2, -1), target)
     _trace = _diff[:, 0, 0] + _diff[:, 1, 1] + _diff[:, 2, 2]
     _theta = ((_trace - 1) / 2).clamp(-1, 1)

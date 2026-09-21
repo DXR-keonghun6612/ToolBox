@@ -1,13 +1,8 @@
+"""정수 격자점 gather."""
 from __future__ import annotations
 
 import torch
 from torch import Tensor
-
-"""격자 변환. 정수 격자점 gather.
-
-- 정수 격자점은 `Gather` 로 읽음. `GridSample` 없음 (TRT INT8 불가)
-- 범위 밖은 0
-"""
 
 
 def Gather_points(flat: Tensor, row: Tensor, col: Tensor, h: int, w: int) -> Tensor:
@@ -22,7 +17,7 @@ def Gather_points(flat: Tensor, row: Tensor, col: Tensor, h: int, w: int) -> Ten
         (B, P).
 
     Raises:
-        ValueError: `flat` 길이 != h * w. stride 가 틀어지면 유효 범위 안에서 엉뚱한 화소를 읽어 조용히 틀림.
+        ValueError: `flat` 길이 != h * w.
     """
     if flat.shape[-1] != h * w:
         raise ValueError(

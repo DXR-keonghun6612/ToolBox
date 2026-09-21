@@ -1,10 +1,9 @@
+"""2D 커널 생성과 채널별 합성곱. 커널 뱅크 state 는 `transform.filter.Filter`."""
 from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-
-"""2D 커널과 그 채널별 합성곱. 커널 생성은 여기, 커널 뱅크 state 는 `transform.filter.Filter`."""
 
 
 _SOBEL_X = ((-1.0, 0.0, 1.0), (-2.0, 0.0, 2.0), (-1.0, 0.0, 1.0))
@@ -17,10 +16,7 @@ def Sobel_kernels() -> tuple[Tensor, Tensor]:
 
 
 def Log_sharpen_kernel(*, sigma: float, size: int, strength: float) -> Tensor:
-    """샤프닝 커널 `delta - strength * LoG(sigma)`.
-
-    LoG 는 합 0 이라 합 1 = DC 보존 -> 정규화와 교환 가능. (sharpen(x) - m) / s == sharpen((x - m) / s).
-    부호 : LoG 는 밝은 능선 중심에서 음수라 빼면 능선 강화.
+    """샤프닝 커널 `delta - strength * LoG(sigma)`. 합 1 (LoG 합 0).
 
     Args:
         sigma: 가우시안 표준편차 (px, 양수).
@@ -46,7 +42,7 @@ def Log_sharpen_kernel(*, sigma: float, size: int, strength: float) -> Tensor:
     _g = torch.exp(-_r2 / (2.0 * _s2))
     _g = _g / _g.sum()
     _log = (_r2 - 2.0 * _s2) / (_s2 ** 2) * _g
-    _log = _log - _log.mean()                # 이산화 오차 보정 -> 합 0
+    _log = _log - _log.mean()                # 합 0
 
     _delta = torch.zeros(size, size, dtype=torch.float64)
     _delta[size // 2, size // 2] = 1.0
@@ -64,7 +60,6 @@ def Depthwise(x: Tensor, kernels: Tensor) -> Tensor:
         (N, C, K, H, W).
     """
     _n, _h, _w = x.shape[0], x.shape[2], x.shape[3]
-    # 채널 수는 Python int. trace 에서 동적이면 conv weight shape 이 미정이라 export 실패
     _c, _k = int(x.shape[1]), int(kernels.shape[0])
     _p = kernels.shape[-1] // 2
     _weight = kernels.to(x).unsqueeze(1).repeat(_c, 1, 1, 1)       # (C*K, 1, k, k), 그룹 c = 채널 c
