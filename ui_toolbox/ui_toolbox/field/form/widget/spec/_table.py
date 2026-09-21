@@ -12,12 +12,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QHBoxLayout,
-    QHeaderView,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -26,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .....style import LABEL, Mark, Now
+from .....style import Now
 from ...._field import Order, Rows
 from ...._item import Button
 from ...._value import Value
@@ -288,6 +287,8 @@ class Table_view(Value):
         _header = self._view.horizontalHeader()
         _header.setSectionsClickable(True)              # 정렬은 Qt 가 아니라 모델의 사슬
         _header.sectionClicked.connect(self._on_header)
+        _header.setStretchLastSection(True)             # 사람이 칸을 끌어도 오른쪽에 빈틈 없음
+        self._view.viewport().installEventFilter(self)  # 표 폭이 바뀌면 칸 폭을 다시 나눔
         self._size_columns(data)
 
         _lay = QVBoxLayout(self)
@@ -303,7 +304,10 @@ class Table_view(Value):
         self._view.selectionModel().selectionChanged.connect(self._on_selection)
 
     def _build_filter(self) -> QHBoxLayout:
-        """필터링 줄 - 아무 칸이나 품으면 남김. 옆의 `초기화` 가 필터링과 정렬을 풀음."""
+        """필터링 줄 - 아무 칸이나 품으면 남김. 옆의 `초기화` 가 필터링과 정렬을 풀음.
+
+        입력창이 표 폭을 따라감 - 줄의 남는 폭을 다 가짐.
+        """
         self._filter = QLineEdit()
         self._filter.setPlaceholderText("필터링 (* 여러 자, ? 한 자)")
         self._filter.setClearButtonEnabled(True)
@@ -313,9 +317,8 @@ class Table_view(Value):
         _reset.clicked.connect(self.reset)
         _row = QHBoxLayout()
         _row.setContentsMargins(0, 0, 0, 0)
-        _row.addWidget(Mark(self._filter, LABEL))
+        _row.addWidget(self._filter, stretch=1)
         _row.addWidget(_reset)
-        _row.addStretch(1)
         return _row
 
     def _build_bar(self, editable: bool, movable: bool) -> QHBoxLayout:
@@ -391,14 +394,32 @@ class Table_view(Value):
 
     # ── 내부 ──────────────────────────────────────────────────────────────────
     def _size_columns(self, data: Rows) -> None:
-        """칸 선언대로 폭을 잡음. 폭이 없는 칸은 남는 폭을 나눠 가짐."""
-        _header = self._view.horizontalHeader()
+        """칸 선언의 `width` 를 비율로 폭을 잡음. 폭이 없는 칸은 선언된 폭의 평균."""
+        _given = [_col.width for _col in data.fields if _col.width]
+        _mean = sum(_given) // len(_given) if _given else 1
         for _at, _col in enumerate(data.fields):
-            if _col.width:
-                self._view.setColumnWidth(_at, _col.width)
-                _header.setSectionResizeMode(_at, QHeaderView.ResizeMode.Interactive)
-            else:
-                _header.setSectionResizeMode(_at, QHeaderView.ResizeMode.Stretch)
+            self._view.setColumnWidth(_at, _col.width or _mean)
+        self._fit_columns()
+
+    def _fit_columns(self) -> None:
+        """칸 폭의 합이 표 폭이 되게 지금 비율대로 다시 나눔. 자투리는 마지막 칸."""
+        _count = self._model.columnCount()
+        _total = self._view.viewport().width()
+        _now = [self._view.columnWidth(_c) for _c in range(_count)]
+        if _count == 0 or _total <= 0 or sum(_now) <= 0:
+            return
+        _scale = _total / sum(_now)
+        _used = 0
+        for _c in range(_count - 1):
+            _w = round(_now[_c] * _scale)
+            self._view.setColumnWidth(_c, _w)
+            _used += _w
+        self._view.setColumnWidth(_count - 1, _total - _used)
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self._view.viewport() and event.type() == QEvent.Type.Resize:
+            self._fit_columns()
+        return super().eventFilter(watched, event)
 
     def _arm(self, at: int) -> None:
         """고른 자리에 맞춰 조작 버튼을 켜고 끔."""

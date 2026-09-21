@@ -116,6 +116,21 @@ def test_extend_under_a_chain_lands_where_a_rebuild_would(order):
     assert _inserted == _t._model._order
 
 
+# ── 칸 폭 ─────────────────────────────────────────────────────────────────────
+def test_columns_fill_the_table_in_the_declared_ratio(_qt_app):
+    """폭 없는 칸은 선언된 폭의 평균. 표가 넓어져도 합이 표 폭, 비율은 그대로."""
+    _t = Table_view(Rows([Field("a", width=100), Field("b", width=300), Field("c")]))
+    _t.show()
+    _seen = []
+    for _w in (600, 900):
+        _t.resize(_w, 200)
+        _qt_app.processEvents()
+        _widths = [_t._view.columnWidth(_c) for _c in range(3)]
+        _seen.append((sum(_widths) == _t._view.viewport().width(),
+                      [round(_x / _widths[0]) for _x in _widths]))
+    assert _seen == [(True, [1, 3, 2]), (True, [1, 3, 2])]
+
+
 # ── 조작 줄 ───────────────────────────────────────────────────────────────────
 def test_viewer_has_no_edit_buttons():
     _t = _table(_CHAIN)

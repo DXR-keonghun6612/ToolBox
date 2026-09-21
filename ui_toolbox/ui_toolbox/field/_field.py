@@ -39,7 +39,7 @@ class Field:
         default: 값이 없을 때 앉힐 것.
         label: 사람에게 보일 문구. 비면 `name`.
         tip: 툴팁.
-        width: 고정 폭(px). `0` 이면 남는 폭을 나눠 가짐.
+        width: 폭(px). 표에서는 비율 - 칸 폭의 합이 표 폭을 따름. `0` 이면 선언된 폭의 평균.
         editable: 사람이 고칠 수 있나.
         min: 수 입력의 하한.
         max: 수 입력의 상한.
