@@ -5,11 +5,7 @@ import torch.distributed as dist
 def Reduce_metrics(
     metrics: dict[str, float], device: torch.device, world_size: int
 ) -> dict[str, float]:
-    """전체 rank의 metrics를 평균으로 동기화.
-
-    단일 GPU 또는 분산 미초기화 상태에서는 float 변환만 수행함.
-    all_reduce 블로킹이 발생하므로 모든 rank에서 동일 시점에 호출해야 함.
-    """
+    """전 rank 평균 (all_reduce, 모든 rank 가 같은 시점에 호출). 단일 GPU 나 분산 미초기화면 float 변환만."""
     if world_size <= 1 or not dist.is_initialized() or not metrics:
         return {k: float(v) for k, v in metrics.items()}
 

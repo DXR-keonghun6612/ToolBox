@@ -20,17 +20,9 @@ def Build_dataset(
     config: Dataset_Config | Classification_Dataset_Config,
     mode: Mode,
 ) -> Custom_Dataset | Classification_Dataset:
-    """Config로부터 데이터셋 인스턴스를 생성한다.
-
-    Args:
-        config: 데이터셋 설정.
-        mode: 데이터셋이 사용될 실행 mode.
-
-    Returns:
-        생성된 Custom_Dataset 인스턴스.
-
+    """
     Raises:
-        ValueError: object_type이 DATASETS에 등록되지 않은 경우.
+        ValueError: `object_type` 이 `DATASETS` 에 미등록.
     """
     _cls = DATASETS.Get(config.object_type)
     if _cls is None:
@@ -44,23 +36,21 @@ def Build_dataloader(
     world_size: int = 1,
     rank: int = 0,
 ) -> tuple[Custom_Dataset | Classification_Dataset, DataLoader]:
-    """dataset_meta에서 dataset을 생성하고 DataLoader를 구성한다.
+    """`dataset_meta` 에서 dataset 생성 + DataLoader.
 
-    실행 환경에 따라 세 가지 경로로 분기한다:
-    - pk_sampler 설정 + TRAIN + 단일 GPU + Classification_Dataset: PK 배치 샘플러 적용.
-    - world_size >= 2: DistributedSampler 적용, shuffle 무효화.
-    - 그 외: 표준 DataLoader.
+    - `pk_sampler` + TRAIN + 단일 GPU + `Classification_Dataset` : `PK_Batch_Sampler`
+    - `world_size >= 2` : `DistributedSampler`. 셔플은 sampler 가
+    - 그 외 : 기본 DataLoader
 
     Args:
-        dataloader_cfg: DataLoader 설정. dataset_meta에서 dataset을 생성한다.
-        mode: 실행 mode. TRAIN 외 mode는 pk_sampler를 적용하지 않는다.
-        world_size: 전체 프로세스 수. 1이면 단일 GPU.
-        rank: 현재 프로세스의 글로벌 rank.
+        dataloader_cfg: DataLoader 설정.
+        mode: 실행 mode.
+        world_size: 전체 프로세스 수.
+        rank: 글로벌 rank.
 
     Returns:
-        tuple: (생성된 Custom_Dataset, 구성된 DataLoader).
+        (dataset, DataLoader).
     """
-    # dataset_meta → Dataset_Config → Custom_Dataset 순서로 생성
     _meta = dataloader_cfg.dataset_meta
     _ds_cfg = cast(Dataset_Config, CFGS.Get(_meta["config_type"])(**_meta))
     _dataset = Build_dataset(_ds_cfg, mode)
@@ -73,7 +63,6 @@ def Build_dataloader(
         and world_size < 2
         and isinstance(_dataset, Classification_Dataset)
     ):
-        # PK 샘플러는 DistributedSampler와 호환되지 않아 단일 GPU TRAIN에만 적용
         _pk = dataloader_cfg.pk_sampler
         _batch_sampler = PK_Batch_Sampler(
             class_ids=_dataset.class_ids,
@@ -91,7 +80,6 @@ def Build_dataloader(
         )
 
     if world_size >= 2:
-        # DDP: DistributedSampler가 셔플을 제어하므로 DataLoader shuffle 비활성화
         _sampler = DistributedSampler(
             _dataset,
             num_replicas=world_size,

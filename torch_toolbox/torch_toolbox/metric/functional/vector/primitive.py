@@ -5,7 +5,7 @@ from torch import Tensor
 
 
 def Cosine_sim(a: Tensor, b: Tensor) -> Tensor:
-    """broadcast cosine 유사도. 정규화 후 마지막 차원 내적 → (...,)."""
+    """broadcast cosine 유사도. 정규화 후 마지막 차원 내적 -> (...,)."""
     return (F.normalize(a, dim=-1) * F.normalize(b, dim=-1)).sum(dim=-1)
 
 

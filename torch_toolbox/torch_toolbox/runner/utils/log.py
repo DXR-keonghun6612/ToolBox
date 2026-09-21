@@ -15,7 +15,7 @@ def log_batch(
     mode_accs: Assemble_Metric,
     key_list: list[str],
 ) -> None:
-    """지정된 key_list의 accumulator에서 현재 누적 스칼라를 읽어 터미널에 갱신."""
+    """`key_list` 의 accumulator 현재 값을 progress bar 로."""
     _scalars: dict[str, float] = {}
     for _key in key_list:
         if _key in mode_accs:
@@ -36,7 +36,7 @@ def log_iter(
     results: dict[str, dict[str, Any]],
     workspace: Path,
 ) -> None:
-    """mode별 accumulator 결과를 터미널 출력 + 로컬 파일 저장."""
+    """mode 별 accumulator 결과를 터미널 + `workspace/avg/<mode>/<acc_name>/iter_<i>.json`."""
     _summary_parts: list[str] = []
     for _mode, _mode_results in results.items():
         for _acc_name, _data in _mode_results.items():

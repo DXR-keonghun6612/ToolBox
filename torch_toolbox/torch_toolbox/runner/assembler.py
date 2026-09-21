@@ -23,20 +23,20 @@ SCHEDULER = TypeVar("SCHEDULER")
 
 @dataclass
 class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
-    """파이프라인 컴포넌트 조립 기반 클래스.
-
-    mode_meta 구조: ``{mode_str: {use_grad, loader, metric, batch_monitoring}}``.
-    meta는 그대로 보유하고 build 시점에 Config·DataLoader·metric으로 변환된다.
-    서브클래스는 ``_Build``에서 도메인별 컴포넌트(model·loss·optim)를 추가한다.
+    """컴포넌트 조립 기반. 서브클래스는 `_Build` 에서 도메인 컴포넌트 (model, loss, optim) 추가.
 
     Attributes:
-        shared: 모든 Config에 공통 적용되는 기반 필드.
-        use_amp: AMP(자동 혼합 정밀도) 활성화 여부.
-        mode_cfg: mode 문자열 → 처리된 meta dict 매핑.
+        shared: 모든 Config 에 공통 적용하는 필드.
+        use_amp: AMP 활성화.
+        max_grad_norm: 그래디언트 L2 norm 상한. 0 이면 안 자름. unscale 뒤 적용, 자르기 전 norm 은
+            배치 metric `grad_norm`.
+        mode_meta: `{mode: {use_grad, loader, metric, batch_monitoring}}`.
+        mode_cfg: `mode_meta` 중 선언된 mode 만. `use_grad` 는 TRAIN 만 True.
     """
 
     shared: dict[str, Any] = field(default_factory=dict)
     use_amp: bool = True
+    max_grad_norm: float = 0.0
 
     mode_meta: InitVar[dict[str, dict[str, Any]] | None] = None
 
@@ -46,7 +46,6 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
         self,
         mode_meta: dict[str, dict[str, Any]] | None,
     ) -> None:
-        # mode_meta에 선언된 mode만 보유; use_grad는 TRAIN에서만 활성화
         self.mode_cfg = {
             _k.value: {**_v, "use_grad": bool(_v.get("use_grad", False)) and _k == Mode.TRAIN}
             for _k in Mode
@@ -55,17 +54,15 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
         }
 
     def Save_config(self, save_dir: str | Path, **kwarg) -> None:
-        """조립 설정 전체를 YAML로 직렬화하여 저장한다.
-
-        서브클래스는 **kwarg로 추가 항목을 병합한다.
+        """조립 설정을 `save_dir/config.yaml` 로.
 
         Args:
-            save_dir: 저장 디렉터리 경로.
-            **kwarg: 서브클래스 추가 직렬화 항목 (model_cfg, loss_cfg 등).
+            **kwarg: 서브클래스 추가 항목 (model_cfg, loss_cfg 등).
         """
         _data: dict[str, Any] = {
             "shared": self.shared,
             "use_amp": self.use_amp,
+            "max_grad_norm": self.max_grad_norm,
             "mode_cfg": dict(self.mode_cfg),
             **kwarg,
         }
@@ -80,25 +77,20 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
         weight_path: str | None = None,
         is_resume: bool = False,
     ) -> tuple[int, dict[str, Any]]:
-        """컴포넌트를 조립하고 가중치를 로드한 뒤 ``(start_iter, components)``를 반환한다.
+        """조립 + 가중치 로드.
 
         Args:
-            device: 타깃 디바이스.
-            world_size: 분산 프로세스 수.
-            rank: 현재 프로세스 rank.
-            is_test: True이면 model·dataloader·metric만 조립 (optim 제외).
-            weight_path: 로드할 가중치 경로. None이면 scratch 학습.
-            is_resume: True이면 학습 상태(optim·scheduler·scaler)도 복원.
+            is_test: True 면 optim 제외.
+            weight_path: 가중치 경로. None 이면 scratch.
+            is_resume: True 면 학습 상태 (optim, scheduler, scaler) 도 복원.
 
         Returns:
-            tuple: (start_iter, components dict)
+            (start_iter, components).
         """
         _components = self._Build(device, world_size, rank, is_test)
-        # 가중치 로드 → 체크포인트에서 시작 이터레이션 결정
         _start_iter = self._Load_model_weights(weight_path, is_resume, **_components)
 
         if not is_test and is_resume:
-            # resume: 옵티마이저·스케줄러·스케일러 상태 복원
             self._Restore_train_states(weight_path, _start_iter, **_components)
 
         return _start_iter, _components
@@ -113,6 +105,7 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
 
     def _Build_model(
         self, device: torch.device, world_size: int,
+        context: dict[str, Any] | None = None,
     ) -> MODEL:
         raise NotImplementedError
 
@@ -121,18 +114,10 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
     def _Build_mode_data(
         self, is_test: bool, world_size: int, rank: int,
     ) -> tuple[dict, dict, dict]:
-        """활성 mode별로 dataset·dataloader·metric을 일괄 조립한다.
-
-        is_test이면 TEST만, 아니면 TRAIN·VALIDATION을 순회한다.
-        mode_cfg에 선언되지 않은 mode는 silently skip된다.
-
-        Args:
-            is_test: True이면 TEST mode 전용.
-            world_size: DDP 프로세스 수 (DistributedSampler 결정에 사용).
-            rank: 현재 프로세스 rank.
+        """mode 별 dataset, dataloader, metric. `is_test` 면 TEST 만, 아니면 TRAIN, VALIDATION. `mode_cfg` 에 없는 mode 는 skip.
 
         Returns:
-            tuple: (datasets, dataloaders, metric) — 각각 Mode 키 dict.
+            (datasets, dataloaders, metric). 각각 `Mode` 키 dict. dataloaders 값은 `(use_grad, DataLoader)`.
         """
         _modes = [Mode.TEST] if is_test else [Mode.TRAIN, Mode.VALIDATION]
         _datasets: dict[Mode, Any] = {}
@@ -142,7 +127,6 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
             if _mode.value not in self.mode_cfg:
                 continue
             _meta = self.mode_cfg[_mode.value]
-            # meta dict → Dataloader_Config → dataset + DataLoader
             _loader_cfg = Build_config(Dataloader_Config, CFGS, _meta.get("loader", {}), **self.shared)
             _dataset, _loader = Build_dataloader(_loader_cfg, _mode, world_size, rank)
             _datasets[_mode] = _dataset
