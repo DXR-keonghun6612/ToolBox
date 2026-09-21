@@ -64,7 +64,7 @@
 | 정렬 사슬 | 칸 하나가 `없음 -> 오름 -> 내림 -> 없음`. 일반은 다른 칸을 풀고 `keep` 은 뒤에 붙임. 머리글 번호는 사슬일 때만. `reset` 이 필터링과 정렬을 다 풀음 |
 | 붙이기 | 리셋 없이 한 번에 끼움, 신호 안 냄. 고른 것이 그대로, 필터링에 안 걸리면 안 보임 |
 | 정렬 중 붙이기 | 오름 · 내림 · 사슬 모두 다시 정렬한 자리와 같음. 같은 값은 원본 순서 |
-| 조작 줄 | 선택 삭제는 `edited` 한 번. 목록 초기화는 물어서 `Yes` 일 때만 비우고 버튼이 꺼짐 |
+| 조작 줄 | 뷰어면 버튼 없음. 선택 삭제는 원본 자리를 신호로 내고 행은 그대로. 목록 초기화는 물어서 `Yes` 일 때만 신호 |
 
 ## 기반
 
@@ -106,10 +106,16 @@ def _rows() -> Rows:
     """표현마다 하나씩. 위젯이 제자리에서 고치므로 나눠 쓰면 화면이 어긋남."""
     return Rows(FIELDS[:4], [{"이름": "a", "칸수": 3}, {"이름": "b"}])
 
-_table = Table_view(_rows(), movable=True)    # 칸 고정. 정렬 · 필터링
+_table = Table_view(_rows(), movable=True)    # 칸 고정. 정렬 · 필터링. 뷰어
+
+# 행을 늘리고 줄이는 목록. 버튼은 신호만 - 원본을 고치고 set_value 로 되비춤
+_list = Table_view(_rows(), editable=True)
+_list.add_requested.connect(on_add)
+_list.remove_requested.connect(on_remove)     # 고른 항목의 원본 자리
+_list.clear_requested.connect(on_clear)       # 위젯이 물은 뒤
 
 # 행이 계속 붙는 목록. 글자는 보일 때만 지음, 붙일 때 리셋 없음
-_log = Table_view(Rows([Field("시각", float, editable=False, display=_stamp)]), add_label="")
+_log = Table_view(Rows([Field("시각", float, editable=False, display=_stamp)]))
 _log.extend(new_rows)                          # 신호 안 냄 - set_value 와 같은 쪽
 _stack = Stack_view(_rows(), movable=True)    # 칸이 상황따라 숨음
 _pairs = Pair_editor(kind="path")             # key/value. 중복 key 허용

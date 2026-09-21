@@ -22,7 +22,7 @@ _FIELDS = [Field("이름", str, editable=False),
 
 
 def _table(rows: list[dict]) -> Table_view:
-    return Table_view(Rows(_FIELDS, rows), add_label="")
+    return Table_view(Rows(_FIELDS, rows))
 
 
 def _names(table: Table_view) -> list[str]:
@@ -117,22 +117,27 @@ def test_extend_under_a_chain_lands_where_a_rebuild_would(order):
 
 
 # ── 조작 줄 ───────────────────────────────────────────────────────────────────
-def _editable(rows: list[dict]) -> Table_view:
-    return Table_view(Rows(_FIELDS, rows))
+def test_viewer_has_no_edit_buttons():
+    _t = _table(_CHAIN)
+    assert (_t._remove, _t._clear) == (None, None)
 
 
-def test_remove_edits_once():
-    _t = _editable(_CHAIN)
-    _edits = []
+def test_remove_signals_the_source_row_and_keeps_the_rows():
+    _t = Table_view(Rows(_FIELDS, _CHAIN), editable=True)
+    _got, _edits = [], []
+    _t.remove_requested.connect(_got.append)
     _t.edited.connect(lambda: _edits.append(True))
-    _t.select(1)
-    _t._on_remove()
-    assert (_names(_t), len(_edits)) == (["b", "c", "d"], 1)
+    assert _t._remove.isEnabled() is False
+    _t._model.sort(1, Qt.SortOrder.DescendingOrder)   # 보이는 자리와 원본 자리가 어긋나게
+    _t.select(2)
+    _t._remove.click()
+    assert (_got, _edits, _names(_t)) == ([2], [], ["a", "d", "b", "c"])
 
 
-def test_clear_asks_first(monkeypatch):
-    _t = _editable(_CHAIN)
-    _asked = []
+def test_clear_asks_before_the_signal(monkeypatch):
+    _t = Table_view(Rows(_FIELDS, _CHAIN), editable=True)
+    _got, _asked = [], []
+    _t.clear_requested.connect(lambda: _got.append(True))
     _answer = [QMessageBox.StandardButton.No]
 
     def _question(*_a, **_k):
@@ -140,11 +145,12 @@ def test_clear_asks_first(monkeypatch):
         return _answer[0]
     monkeypatch.setattr(QMessageBox, "question", _question)
 
-    _t._on_clear()
-    assert (len(_t.value()), _t._clear.isEnabled()) == (4, True)
+    _t._clear.click()
     _answer[0] = QMessageBox.StandardButton.Yes
-    _t._on_clear()
-    assert (len(_t.value()), _t._clear.isEnabled(), len(_asked)) == (0, False, 2)
+    _t._clear.click()
+    assert (len(_asked), len(_got), len(_t.value())) == (2, 1, 4)
+    _t.set_value([])                                  # 지우는 건 소비처. 비면 버튼이 꺼짐
+    assert _t._clear.isEnabled() is False
 
 
 # ── 붙이기 ────────────────────────────────────────────────────────────────────

@@ -179,19 +179,6 @@ class _Model(QAbstractTableModel):
         """원본 행들 (사본)."""
         return self._data.rows()
 
-    def append(self) -> int:
-        """빈 행을 끝에 붙이고 그 원본 자리를 냄."""
-        _at = self._data.append({})
-        self._rebuild()
-        return _at
-
-    def remove(self, at: int) -> bool:
-        """그 원본 자리의 행을 뺌."""
-        if not self._data.remove(at):
-            return False
-        self._rebuild()
-        return True
-
     def move(self, at: int, step: int) -> int:
         """그 원본 자리의 행을 옮기고 새 자리를 냄."""
         _to = self._data.move(at, step)
@@ -261,22 +248,31 @@ class _Model(QAbstractTableModel):
 class Table_view(Value):
     """칸이 고정된 항목 목록 - 필터링 줄 + 표 + 조작 줄. payload 는 `list[dict]`.
 
+    행을 늘리고 줄이는 버튼 셋(추가 · 선택 삭제 · 목록 초기화)은 행을 안 건드리고 신호만 냄 -
+    행의 원본이 어디인지는 소비처가 앎. 소비처가 원본을 고치고 `set_value` 로 되비춤.
+
     Attributes:
         value_changed: 항목 전체
         selected: 고른 항목의 원본 자리. 고른 것이 없으면 `-1`
+        add_requested: `추가` 눌림
+        remove_requested: `선택 삭제` 눌림. 고른 항목의 원본 자리
+        clear_requested: `목록 초기화` 눌림. 묻고 Yes 일 때만
     """
 
-    value_changed = Signal(list)
-    selected      = Signal(int)
+    value_changed   = Signal(list)
+    selected        = Signal(int)
+    add_requested   = Signal()
+    remove_requested = Signal(int)
+    clear_requested = Signal()
 
-    def __init__(self, data: Rows, add_label: str = "+ 추가",
+    def __init__(self, data: Rows, editable: bool = False,
                  movable: bool = False, filterable: bool = True,
                  parent: QWidget | None = None) -> None:
         """표를 구성.
 
         Args:
-            data: 비출 항목들. 이 위젯이 제자리에서 고침.
-            add_label: 추가 버튼 라벨. 빈 문자열이면 조작 줄의 추가 · 선택 삭제 · 목록 초기화 없음.
+            data: 비출 항목들. 칸 편집과 이동은 이 위젯이 제자리에서 고침.
+            editable: 행을 늘리고 줄이는 버튼 셋을 붙이나. 칸 편집은 `Field.editable` 이 따로.
             movable: `▲▼` 를 붙이나.
             filterable: 필터링 줄을 붙이나.
             parent: 부모 위젯.
@@ -301,7 +297,7 @@ class Table_view(Value):
         if filterable:
             _lay.addLayout(self._build_filter())
         _lay.addWidget(self._view, stretch=1)
-        _lay.addLayout(self._build_bar(add_label, movable))
+        _lay.addLayout(self._build_bar(editable, movable))
 
         self._model.dataChanged.connect(lambda *_: self._emit())
         self._view.selectionModel().selectionChanged.connect(self._on_selection)
@@ -322,13 +318,13 @@ class Table_view(Value):
         _row.addStretch(1)
         return _row
 
-    def _build_bar(self, add_label: str, movable: bool) -> QHBoxLayout:
-        """표 아래 조작 줄. 고른 항목에 걸리므로 고른 것이 없으면 꺼 둠."""
+    def _build_bar(self, editable: bool, movable: bool) -> QHBoxLayout:
+        """표 아래 조작 줄. 고른 항목에 걸리는 버튼은 고른 것이 없으면 꺼 둠."""
         _bar = QHBoxLayout()
         _bar.setContentsMargins(0, 0, 0, 0)
-        if add_label:
-            _add = QPushButton(add_label)
-            _add.clicked.connect(self._on_add)
+        if editable:
+            _add = QPushButton("추가")
+            _add.clicked.connect(self.add_requested)
             _bar.addWidget(_add)
         _bar.addStretch(1)
         self._move: Button_bar | None = None
@@ -338,9 +334,9 @@ class Table_view(Value):
             _bar.addWidget(self._move)
         self._remove: QPushButton | None = None
         self._clear: QPushButton | None = None
-        if add_label:
+        if editable:
             self._remove = QPushButton("선택 삭제")
-            self._remove.clicked.connect(self._on_remove)
+            self._remove.clicked.connect(lambda: self.remove_requested.emit(self.current()))
             _bar.addWidget(self._remove)
             self._clear = QPushButton("목록 초기화")
             self._clear.clicked.connect(self._on_clear)
@@ -426,24 +422,13 @@ class Table_view(Value):
         self._arm(_at)
         self.selected.emit(_at)
 
-    def _on_add(self) -> None:
-        self.select(self._model.append())
-        self._emit()
-
-    def _on_remove(self) -> None:
-        if self._model.remove(self.current()):
-            self._arm(self.current())
-            self._emit()
-
     def _on_clear(self) -> None:
-        """행 전부 삭제. 되돌릴 수 없어 묻고 지움."""
+        """목록 초기화. 되돌릴 수 없어 묻고 신호."""
         _count = len(self._model.rows())
-        _answer = QMessageBox.question(self, "목록 초기화", f"행 {_count} 개를 전부 지웁니다.")
-        if _answer != QMessageBox.StandardButton.Yes:
-            return
-        self._model.replace([])
-        self._arm(-1)
-        self._emit()
+        _answer = QMessageBox.question(self, "목록 초기화",
+                                       f"항목 {_count} 개를 전부 지웁니다. 되돌릴 수 없습니다.")
+        if _answer == QMessageBox.StandardButton.Yes:
+            self.clear_requested.emit()
 
     def _on_move(self, step: int) -> None:
         _at = self.current()
