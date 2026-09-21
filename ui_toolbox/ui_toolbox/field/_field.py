@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+import re
 import types
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Union, get_args, get_origin
 
-__all__ = ["Field", "Order", "Rows", "Type_name", "list_pair", "list_str",
+__all__ = ["Field", "Order", "Pattern", "Rows", "Type_name", "list_pair", "list_str",
            "optional_float"]
 
 
@@ -43,7 +45,7 @@ class Field:
         max: 수 입력의 상한.
         step: 수 입력의 증감 단위.
         kind: 입력 변형 이름 (`path` 등). 같은 자료형이라도 위젯이 갈릴 때.
-        display: 값 -> 보일 글자. 비면 `str`. 정렬은 값으로, 거르기는 이 글자로.
+        display: 값 -> 보일 글자. 비면 `str`. 정렬은 값으로, 필터링은 이 글자로.
     """
 
     name:     str
@@ -202,16 +204,26 @@ class Rows:
         self._rows = [dict(_r) for _r in (rows or [])]
 
     def matches(self, at: int, text: str) -> bool:
-        """그 행의 어느 칸이든 보이는 글자에 `text` 를 품고 있나 (대소문자 무시).
+        """그 행의 어느 칸이든 보이는 글자가 `text` 를 품고 있나 (대소문자 무시).
 
         선언 안 된 키는 화면에 없으므로 안 봄.
 
         Args:
             at: 행 자리.
-            text: 찾는 글자. 비면 늘 True.
+            text: 찾는 글자. `*` 는 0 자 이상, `?` 는 한 자. 비면 늘 True.
         """
         if not text:
             return True
-        _low = text.lower()
+        _pat = Pattern(text)
         _row = self._rows[at]
-        return any(_low in _f.text(_row.get(_f.name)).lower() for _f in self._fields)
+        return any(_pat.search(_f.text(_row.get(_f.name))) for _f in self._fields)
+
+
+@lru_cache(maxsize=8)
+def Pattern(text: str) -> re.Pattern:
+    """필터링 글자 -> 정규식. 부분 일치, 대소문자 무시. `*` 는 0 자 이상, `?` 는 한 자.
+
+    행마다 다시 짓지 않게 캐시 - 한 번 거를 때 행 수만큼 불림.
+    """
+    _src = re.escape(text).replace(r"\*", ".*").replace(r"\?", ".")
+    return re.compile(_src, re.IGNORECASE | re.DOTALL)

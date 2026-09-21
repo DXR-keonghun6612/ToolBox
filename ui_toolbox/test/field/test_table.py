@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QMessageBox
 
 from ui_toolbox.field import Field, Rows, Table_view
 
@@ -49,6 +50,101 @@ def test_sort_reads_the_value():
     _t = _table([{"이름": "a", "수": 10}, {"이름": "b", "수": 9}])
     _t._model.sort(1)
     assert _names(_t) == ["b", "a"]
+
+
+# ── 정렬 사슬 ─────────────────────────────────────────────────────────────────
+_CHAIN = [{"이름": _n, "수": _v} for _n, _v in [("b", 1), ("a", 2), ("c", 1), ("d", 2)]]
+
+
+def _headers(table: Table_view) -> list[str]:
+    _m = table._model
+    return [_m.headerData(_c, Qt.Orientation.Horizontal) for _c in range(_m.columnCount())]
+
+
+def test_cycle_goes_none_up_down_none():
+    _t = _table(_CHAIN)
+    _seen = []
+    for _ in range(3):
+        _t._model.cycle(1)
+        _seen.append((_names(_t), _headers(_t)[1]))
+    assert _seen == [(["b", "c", "a", "d"], "수 ▲"),
+                     (["a", "d", "b", "c"], "수 ▼"),
+                     (["b", "a", "c", "d"], "수")]
+
+
+def test_plain_cycle_drops_the_other_column():
+    _t = _table(_CHAIN)
+    _t._model.cycle(1)
+    _t._model.cycle(0)
+    assert (_names(_t), _headers(_t)) == (["a", "b", "c", "d"], ["이름 ▲", "수"])
+
+
+def test_keep_chains_and_numbers_the_headers():
+    """앞 칸이 같은 행은 뒤 칸 순서로. 번호는 사슬일 때만."""
+    _t = _table(_CHAIN)
+    _t._model.cycle(1)
+    _t._model.cycle(0, keep=True)
+    assert (_names(_t), _headers(_t)) == (["b", "c", "a", "d"], ["이름 ▲2", "수 ▲1"])
+    _t._model.cycle(0, keep=True)
+    assert (_names(_t), _headers(_t)) == (["c", "b", "d", "a"], ["이름 ▼2", "수 ▲1"])
+    _t._model.cycle(1, keep=True)          # 앞 칸이 내림으로 돌아도 자리는 그대로
+    assert _headers(_t) == ["이름 ▼2", "수 ▼1"]
+    _t._model.cycle(1, keep=True)          # 앞 칸이 빠지면 남은 칸이 하나라 번호가 없음
+    assert (_names(_t), _headers(_t)) == (["d", "c", "b", "a"], ["이름 ▼", "수"])
+
+
+def test_reset_clears_filter_and_sort():
+    _t = _table(_CHAIN)
+    _t._filter.setText("?")
+    _t._filter.setText("a")
+    _t._model.cycle(0, keep=True)
+    _t.reset()
+    assert (_names(_t), _headers(_t), _t._filter.text()) == (["b", "a", "c", "d"], ["이름", "수"], "")
+
+
+@pytest.mark.parametrize("order", [Qt.SortOrder.AscendingOrder,
+                                   Qt.SortOrder.DescendingOrder])
+def test_extend_under_a_chain_lands_where_a_rebuild_would(order):
+    _t = _table(_CHAIN)
+    _t._model.sort(1, order)
+    _t._model.cycle(0, keep=True)
+    _t._model.cycle(0, keep=True)          # 수 -> 이름 내림
+    _t.extend([{"이름": _n, "수": _v}
+               for _n, _v in [("a", 1), ("e", 2), ("c", 0), ("b", None), ("f", 1)]])
+    _inserted = list(_t._model._order)
+    _t._model._rebuild()
+    assert _inserted == _t._model._order
+
+
+# ── 조작 줄 ───────────────────────────────────────────────────────────────────
+def _editable(rows: list[dict]) -> Table_view:
+    return Table_view(Rows(_FIELDS, rows))
+
+
+def test_remove_edits_once():
+    _t = _editable(_CHAIN)
+    _edits = []
+    _t.edited.connect(lambda: _edits.append(True))
+    _t.select(1)
+    _t._on_remove()
+    assert (_names(_t), len(_edits)) == (["b", "c", "d"], 1)
+
+
+def test_clear_asks_first(monkeypatch):
+    _t = _editable(_CHAIN)
+    _asked = []
+    _answer = [QMessageBox.StandardButton.No]
+
+    def _question(*_a, **_k):
+        _asked.append(True)
+        return _answer[0]
+    monkeypatch.setattr(QMessageBox, "question", _question)
+
+    _t._on_clear()
+    assert (len(_t.value()), _t._clear.isEnabled()) == (4, True)
+    _answer[0] = QMessageBox.StandardButton.Yes
+    _t._on_clear()
+    assert (len(_t.value()), _t._clear.isEnabled(), len(_asked)) == (0, False, 2)
 
 
 # ── 붙이기 ────────────────────────────────────────────────────────────────────

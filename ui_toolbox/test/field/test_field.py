@@ -105,6 +105,20 @@ def test_matches_ignores_case_and_scans_every_column():
     assert _r.matches(0, "") is True
 
 
+@pytest.mark.parametrize("text, hit", [
+    ("a?c", True),      # ? 는 딱 한 자
+    ("a?bc", False),
+    ("a*c", True),      # * 는 0 자 이상
+    ("ac", False),      # 와일드카드 없이는 글자 그대로
+    ("*bc*", True),
+    ("a.c", False),     # 정규식 글자는 글자
+    ("[abc]", False),
+])
+def test_matches_wildcards(text, hit):
+    _r = Rows([Field("k")], [{"k": "xabcx"}])
+    assert _r.matches(0, text) is hit
+
+
 def test_title_falls_back_to_name():
     assert Field("k").title() == "k"
     assert Field("k", label="칸").title() == "칸"

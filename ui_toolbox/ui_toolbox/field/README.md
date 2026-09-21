@@ -25,7 +25,7 @@ graph RL
 
 | 자리 | 아는 것 | 모르는 것 |
 |---|---|---|
-| [`_field.py`](_field.py) | `Field` · `Rows` - 칸 선언과 행들의 값 · 순서 · 거르기, `Field.type` 판별 | Qt, 무엇으로 보이는가 |
+| [`_field.py`](_field.py) | `Field` · `Rows` - 칸 선언과 행들의 값 · 순서 · 필터링, `Field.type` 판별 | Qt, 무엇으로 보이는가 |
 | [`_item.py`](_item.py) | `Button` - 글리프 · 툴팁 · 눌렸을 때 낼 값 | 어디에 붙는가 |
 | [`_value.py`](_value.py) | `Value` - `value` · `set_value` · `edited` | 어느 위젯이 서는가 |
 | [`form/widget/`](form/widget) | 단일 위젯과 `칸 선언 -> 위젯` 등록표 | 여럿이 어떻게 놓이나 |
