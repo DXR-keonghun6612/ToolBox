@@ -5,7 +5,7 @@ from torch import Tensor
 
 """theta 축 순환 정합 거리 — **정렬 품질 측정과 저신뢰 표본의 대비책**.
 
-주 용도는 :class:`~torch_toolbox.modules.transform.mask.canonical.Centroid_Frame` 의 정렬이
+주 용도는 :func:`~torch_toolbox.modules.transform.functional.frame.Centroid_frame` 의 정렬이
 얼마나 일관적인지 **재는 것**이다. 같은 마스크를 여러 각도로 돌려 정렬한 뒤 결과 프로파일의
 최적 순환 shift 를 보면, shift 가 0 이 아닌 비율이 곧 정렬 실패율이다.
 
@@ -56,7 +56,7 @@ def Flip_lags(num_angular: int, width: int = 0, device: torch.device | None = No
     ``(a-b) mod 2`` — 즉 ``0`` 또는 ``NT/2`` 뿐이다. 후보 둘이면 충분하다.
 
     ``width`` 는 잔차 각도 지터용이다.
-    :class:`~torch_toolbox.modules.transform.mask.polar.Polar_Raster` 가 회전을
+    :class:`~torch_toolbox.modules.transform.radial.Radial` 이 회전을
     ``round(angle / dtheta)`` 로 bin 양자화하고, ``anisotropy`` 가 낮은 샘플은 각 자체가
     흔들리므로 정확히 ``{0, NT/2}`` 가 아니라 그 근방을 봐야 한다.
 
