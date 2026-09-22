@@ -12,12 +12,17 @@
 
 from __future__ import annotations
 
+import csv
+from pathlib import Path
+
 from PySide6.QtCore import QAbstractTableModel, QEvent, QModelIndex, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QFileDialog,
     QHBoxLayout,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
     QTableView,
@@ -173,6 +178,15 @@ class _Model(QAbstractTableModel):
         self.dataChanged.emit(index, index)
         return True
 
+    # ── 뽑기 ──────────────────────────────────────────────────────────────────
+    def titles(self) -> list[str]:
+        """칸 머리글. 정렬 표시(`▲` · `▼`)는 빼고 선언의 이름만 - 내보낸 파일에 화살표가 남지 않게."""
+        return [_c.title() for _c in self._data.fields]
+
+    def line(self, at: int) -> list[str]:
+        """원본 자리 `at` 의 한 줄. 표에 보이는 글자 그대로 - 사람이 본 것과 같게."""
+        return [_c.text(self._data.get(at, _c.name)) for _c in self._data.fields]
+
     # ── 수명 ──────────────────────────────────────────────────────────────────
     def rows(self) -> list[dict]:
         """원본 행들 (사본)."""
@@ -250,11 +264,18 @@ class Table_view(Value):
     행을 늘리고 줄이는 버튼 셋(추가 · 선택 삭제 · 목록 초기화)은 행을 안 건드리고 신호만 냄 -
     행의 원본이 어디인지는 소비처가 앎. 소비처가 원본을 고치고 `set_value` 로 되비춤.
 
+    여럿 고름 - Ctrl 로 하나씩, Shift 로 구간. 고른 자리들은 `selection`, 마지막에 짚은 하나는
+    `current`. 신호 `selected` 와 `remove_requested` 는 `current` 하나를 냄.
+
+    행 위 오른쪽 클릭이 팝업 메뉴. 이 위젯은 `CSV 내보내기` 하나를 냄 - 고른 행을 파일로,
+    고른 것이 없으면 보이는 행 전부(필터링 · 정렬이 걸린 그대로). 파생은 `fill_menu` 로 제 항목을
+    더하고, 더한 것이 있으면 사이에 줄이 그어짐.
+
     Attributes:
         value_changed: 항목 전체
-        selected: 고른 항목의 원본 자리. 고른 것이 없으면 `-1`
+        selected: 마지막에 짚은 항목의 원본 자리. 고른 것이 없으면 `-1`
         add_requested: `추가` 눌림
-        remove_requested: `선택 삭제` 눌림. 고른 항목의 원본 자리
+        remove_requested: `선택 삭제` 눌림. 마지막에 짚은 항목의 원본 자리 하나
         clear_requested: `목록 초기화` 눌림. 묻고 Yes 일 때만
     """
 
@@ -282,7 +303,9 @@ class Table_view(Value):
         self._view = QTableView()
         self._view.setModel(self._model)
         self._view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # 여럿 고름 - Ctrl 로 하나씩, Shift 로 구간. `current` 는 그 중 마지막에 짚은 행이라
+        # 행 하나를 따르는 소비처(`selected`)는 그대로 섬
+        self._view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._view.verticalHeader().setVisible(True)    # 순서 번호
         _header = self._view.horizontalHeader()
         _header.setSectionsClickable(True)              # 정렬은 Qt 가 아니라 모델의 사슬
@@ -382,12 +405,24 @@ class Table_view(Value):
         self._model.sort(-1)
 
     def current(self) -> int:
-        """고른 항목의 원본 자리. 없으면 `-1`."""
+        """마지막에 짚은 항목의 원본 자리. 없으면 `-1`. 여럿을 골라도 하나."""
         _index = self._view.currentIndex()
         return self._model.source(_index.row()) if _index.isValid() else -1
 
+    def selection(self) -> list[int]:
+        """고른 항목들의 원본 자리. 보이는 순서 - 정렬을 걸었으면 그 순서. 없으면 빈 목록."""
+        _shown = sorted({_i.row() for _i in self._view.selectionModel().selectedRows()})
+        return [self._model.source(_r) for _r in _shown]
+
+    def shown_rows(self) -> list[int]:
+        """보이는 항목 전부의 원본 자리. 필터링 · 정렬이 걸린 그대로.
+
+        `value()` 는 원본 순서라 정렬이 안 실림. 사람이 본 차례가 필요하면 이것
+        """
+        return [self._model.source(_r) for _r in range(self._model.rowCount())]
+
     def select(self, at: int) -> None:
-        """그 원본 자리의 항목을 고름."""
+        """그 원본 자리의 항목을 고름. 앞서 고른 것은 풀림."""
         _shown = self._model.shown(at)
         if _shown >= 0:
             self._view.selectRow(_shown)
@@ -457,3 +492,66 @@ class Table_view(Value):
         if _to != _at:
             self.select(_to)
             self._emit()
+
+    # ── 팝업 메뉴 ─────────────────────────────────────────────────────────────
+    def contextMenuEvent(self, event) -> None:
+        """표 위 오른쪽 클릭. 이 위젯의 항목 뒤에 줄을 긋고 파생이 더한 것을 붙임.
+
+        필터링 줄 · 조작 줄 위에서는 안 뜸 - 행에 거는 것이라
+        """
+        if not self._view.geometry().contains(event.pos()):
+            return
+        _menu = QMenu(self)
+        self._base_menu(_menu)
+        _at = len(_menu.actions())
+        self.fill_menu(_menu)
+        if len(_menu.actions()) > _at > 0:
+            _menu.insertSeparator(_menu.actions()[_at])   # 더한 것이 있을 때만 줄
+        if _menu.actions():
+            _menu.exec(event.globalPos())
+
+    def _base_menu(self, menu: QMenu) -> None:
+        """이 위젯이 늘 내는 항목. 파생은 이것을 안 건드리고 `fill_menu` 로 더함."""
+        _picked = self.selection()
+        _count = len(_picked) or len(self.shown_rows())
+        _act = menu.addAction(f"CSV 내보내기 - {'고른' if _picked else '보이는'} {_count} 행")
+        _act.setEnabled(_count > 0)
+        _act.triggered.connect(self._on_export)
+
+    def fill_menu(self, menu: QMenu) -> None:
+        """파생이 자기 항목을 더하는 자리. 기본은 아무것도 안 함.
+
+        더한 것이 있으면 이 위젯의 항목과 사이에 줄이 그어짐. 고른 자리는 `selection` ·
+        `current` 로 물을 것
+        """
+
+    # ── 내보내기 ──────────────────────────────────────────────────────────────
+    def write_csv(self, path: str | Path, at: list[int] | None = None) -> int:
+        """원본 자리 `at` 의 행을 csv 로 쓰고 쓴 행 수를 냄. 안 주면 보이는 행 전부.
+
+        머리글은 칸 선언의 이름, 값은 표에 보이는 글자 - 사람이 본 것과 같은 파일.
+        엑셀이 한글을 바로 읽게 BOM 을 붙임 (`utf-8-sig`)
+
+        Raises:
+            OSError: 못 씀
+        """
+        _at = self.shown_rows() if at is None else at
+        with open(path, "w", newline="", encoding="utf-8-sig") as _f:
+            _out = csv.writer(_f)
+            _out.writerow(self._model.titles())
+            _out.writerows(self._model.line(_row) for _row in _at)
+        return len(_at)
+
+    def _on_export(self) -> None:
+        """고른 행을 csv 로. 고른 것이 없으면 보이는 행 전부 - 필터링 · 정렬이 걸린 그대로."""
+        _at = self.selection() or self.shown_rows()
+        if not _at:
+            QMessageBox.information(self, "CSV 내보내기", "내보낼 행이 없습니다.")
+            return
+        _path, _ = QFileDialog.getSaveFileName(self, "CSV 내보내기", "table.csv", "CSV (*.csv)")
+        if not _path:
+            return
+        try:
+            self.write_csv(_path, _at)
+        except OSError as _e:
+            QMessageBox.warning(self, "CSV 내보내기", f"못 썼습니다.\n\n{_e}")
