@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Domain-free Qt widgets and their contracts, built on PySide6."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
