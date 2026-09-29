@@ -58,6 +58,25 @@ def test_labelled_off_drops_the_label():
     assert Build(_spec, labelled=False).findChild(QLabel) is None
 
 
+@pytest.mark.parametrize("spec, value", [
+    (Field("단위따라", float, max=10.0, step=0.0001), 0.6913),
+    (Field("선언대로", float, max=5000.0, step=1.0, decimals=6), 1253.104055),
+    (Field("켜고끔", float | None, max=10.0, step=0.00001), 1.00546),
+])
+def test_float_keeps_its_digits(spec, value):
+    """스핀이 자릿수만큼만 들고 있음. 모자라면 값이 조용히 반올림되어 저장됨."""
+    _w = Build(spec)
+    _w.set_value(value)
+    assert _w.value() == pytest.approx(value, abs=1e-12)
+
+
+def test_float_digits_do_not_drop_below_two():
+    """자릿수를 안 준 굵은 단위 선언은 예전처럼 둘째 자리."""
+    _w = Build(Field("굵음", float, max=10.0, step=1.0))
+    _w.set_value(1.25)
+    assert _w.value() == pytest.approx(1.25)
+
+
 def _percent(value: float) -> str:
     return f"{value:.0%}"
 

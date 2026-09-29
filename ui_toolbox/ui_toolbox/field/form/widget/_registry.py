@@ -87,6 +87,14 @@ def _range(spec: Field) -> tuple[float, float, float]:
             0.05 if spec.step is None else spec.step)
 
 
+def _decimals(spec: Field, step: float) -> int:
+    """실수 입력의 소수 자릿수. 선언이 비우면 `step` 의 자릿수, 둘째 자리 아래로는 안 내려감."""
+    if spec.decimals is not None:
+        return spec.decimals
+    _text = f"{step:.10f}".rstrip("0")
+    return max(2, len(_text.split(".")[1]) if "." in _text else 0)
+
+
 # ── 고칠 수 있는 칸 ───────────────────────────────────────────────────────────
 @Register("bool")
 def _check(spec: Field, label: str) -> QWidget:
@@ -104,14 +112,14 @@ def _int(spec: Field, label: str) -> QWidget:
 def _float(spec: Field, label: str) -> QWidget:
     _min, _max, _step = _range(spec)
     return Float_slider_row(label, _min, _max, float(spec.default or 0.0),
-                            step=_step, tooltip=spec.tip)
+                            step=_step, decimals=_decimals(spec, _step), tooltip=spec.tip)
 
 
 @Register("optional_float")
 def _optional_float(spec: Field, label: str) -> QWidget:
     _min, _max, _step = _range(spec)
     return Optional_float_row(label, _min, _max, spec.default,
-                              step=_step, tooltip=spec.tip)
+                              step=_step, decimals=_decimals(spec, _step), tooltip=spec.tip)
 
 
 @Register("str")

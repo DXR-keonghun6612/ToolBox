@@ -44,6 +44,8 @@ class Field:
         min: 수 입력의 하한.
         max: 수 입력의 상한.
         step: 수 입력의 증감 단위.
+        decimals: 실수 입력의 소수 자릿수. 비면 `step` 의 자릿수, 둘째 자리 아래로는 안 내려감.
+            모자라면 스핀이 값을 그 자리로 반올림해 들고 있음 - 정밀한 값(캘리브 등)은 넉넉히.
         kind: 입력 변형 이름 (`path` 등). 같은 자료형이라도 위젯이 갈릴 때.
         display: 값 -> 보일 글자. 비면 `str`. 정렬은 값으로, 필터링은 이 글자로.
     """
@@ -58,6 +60,7 @@ class Field:
     min:      float | None = None
     max:      float | None = None
     step:     float | None = None
+    decimals: int | None = None
     kind:     str = ""
     display:  Callable[[Any], str] | None = None
 

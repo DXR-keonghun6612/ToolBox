@@ -23,7 +23,7 @@ class Optional_float_row(Value):
     value_changed = Signal(object)
 
     def __init__(self, label: str = "", min_val: float = 0.0, max_val: float = 1.0,
-                 default=None, step: float = 0.05, tooltip: str = "",
+                 default=None, step: float = 0.05, decimals: int = 2, tooltip: str = "",
                  parent: QWidget | None = None) -> None:
         """Args:
         label: 체크박스에 붙일 문구. 슬라이더는 그 아래 들여씀. 비면 둘 다 없이.
@@ -31,6 +31,7 @@ class Optional_float_row(Value):
         max_val: 최댓값.
         default: 초기값. `None` 이면 꺼진 채로 서고 슬라이더는 범위 한가운데.
         step: 슬라이더 한 칸.
+        decimals: 스핀 소수 자릿수.
         tooltip: 위젯 툴팁.
         parent: 부모 위젯.
         """
@@ -46,7 +47,7 @@ class Optional_float_row(Value):
         self._slider = Float_slider_row(
             f"  -> {label}" if label else "", min_val, max_val,
             float(default) if default is not None else (min_val + max_val) / 2,
-            step=step, tooltip=tooltip)
+            step=step, decimals=decimals, tooltip=tooltip)
         self._slider.setEnabled(default is not None)
         _lay.addWidget(self._slider)
 
