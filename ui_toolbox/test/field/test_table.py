@@ -210,3 +210,14 @@ def test_extend_under_sort_lands_where_a_rebuild_would(order):
     _inserted = list(_t._model._order)
     _t._model._rebuild()
     assert _inserted == _t._model._order
+
+
+# ── 더블클릭 ──────────────────────────────────────────────────────────────────
+def test_double_click_signals_the_source_row_and_field():
+    """정렬이 걸려도 보이는 자리가 아니라 원본 자리."""
+    _t = _table([{"이름": "a", "수": 10}, {"이름": "b", "수": 9}])
+    _t._model.sort(1)
+    _got = []
+    _t.double_clicked.connect(lambda at, name: _got.append((at, name)))
+    _t._view.doubleClicked.emit(_t._model.index(0, 1))
+    assert _got == [(1, "수")]

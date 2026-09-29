@@ -277,6 +277,7 @@ class Table_view(Value):
         add_requested: `추가` 눌림
         remove_requested: `선택 삭제` 눌림. 마지막에 짚은 항목의 원본 자리 하나
         clear_requested: `목록 초기화` 눌림. 묻고 Yes 일 때만
+        double_clicked: 칸 더블클릭. `(원본 자리, 칸 이름)`. 편집 칸도 냄 - 거르는 것은 소비처
     """
 
     value_changed   = Signal(list)
@@ -284,6 +285,7 @@ class Table_view(Value):
     add_requested   = Signal()
     remove_requested = Signal(int)
     clear_requested = Signal()
+    double_clicked  = Signal(int, str)
 
     def __init__(self, data: Rows, editable: bool = False,
                  movable: bool = False, filterable: bool = True,
@@ -325,6 +327,7 @@ class Table_view(Value):
 
         self._model.dataChanged.connect(lambda *_: self._emit())
         self._view.selectionModel().selectionChanged.connect(self._on_selection)
+        self._view.doubleClicked.connect(self._on_double)
 
     def _build_filter(self) -> QHBoxLayout:
         """필터링 줄 - 아무 칸이나 품으면 남김. 옆의 `초기화` 가 필터링과 정렬을 풀음.
@@ -477,6 +480,9 @@ class Table_view(Value):
         _at = self.current()
         self._arm(_at)
         self.selected.emit(_at)
+
+    def _on_double(self, index: QModelIndex) -> None:
+        self.double_clicked.emit(self._model.source(index.row()), self._model._data.fields[index.column()].name)
 
     def _on_clear(self) -> None:
         """목록 초기화. 되돌릴 수 없어 묻고 신호."""
