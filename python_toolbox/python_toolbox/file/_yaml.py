@@ -10,9 +10,17 @@ from ._base import File_Process, Handle_exp, Suffix_check
 
 class _Smart_Dumper(yaml.Dumper):
     def represent_sequence(self, tag, sequence, flow_style=None):
-        if all(not isinstance(v, (dict, list)) for v in sequence):
+        if all(not isinstance(v, (dict, list, tuple)) for v in sequence):
             flow_style = True
         return super().represent_sequence(tag, sequence, flow_style=flow_style)
+
+
+# tuple 을 !!python/tuple 태그 없이 일반 시퀀스로 덤프한다(다시 읽으면 list).
+_Smart_Dumper.add_representer(
+    tuple,
+    lambda dumper, data: dumper.represent_sequence(
+        "tag:yaml.org,2002:seq", list(data)),
+)
 
 
 class Yaml(File_Process):
