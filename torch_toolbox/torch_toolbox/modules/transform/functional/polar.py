@@ -131,3 +131,16 @@ def Rle_outline(rle: Tensor) -> Tensor:
         (B, NT).
     """
     return rle.sum(-1)
+
+
+def Rle_thickness(rle: Tensor) -> Tensor:
+    """RLE 간격 -> 살 길이 합. 구멍을 뺀 재료 길이 - 바깥이 같아도 안쪽이 다르면 갈림.
+
+    Args:
+        rle: (B, NT, K). `Radial_rle` 출력. 홀수 슬롯이 살.
+
+    Returns:
+        (B, NT).
+    """
+    _odd = (torch.arange(rle.shape[-1], device=rle.device) % 2 == 1).to(rle.dtype)
+    return (rle * _odd).sum(-1)

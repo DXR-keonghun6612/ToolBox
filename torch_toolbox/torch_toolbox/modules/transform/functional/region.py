@@ -71,25 +71,21 @@ def Region_scalars(
     _ro = r_outer / _norm
     _swept_sqrt = (math.pi * (_ro * _ro).mean(dim=1)).clamp_min(0).sqrt() * _norm
 
-    _size = torch.stack(
-        [_area_sqrt, _perimeter, _major, _minor, _bu, _bv, _swept_sqrt], dim=1)
+    _size = [_area_sqrt, _perimeter, _major, _minor, _bu, _bv, _swept_sqrt]
     # 비율은 sqrt 끼리 나눔. extent = (a/bu)(a/bv), fill = (a/s)^2, circularity = 4pi (a/p)^2
     _fill = _Safe_div(_area_sqrt, _swept_sqrt)
     _circ = _Safe_div(_area_sqrt, _perimeter)
-    _ratio = torch.stack(
-        [
-            _Safe_div(_bu, _bv),
-            _Safe_div(_major, _minor),
-            _Safe_div(_area_sqrt, _bu) * _Safe_div(_area_sqrt, _bv),
-            _fill * _fill,
-            4.0 * math.pi * _circ * _circ,
-        ],
-        dim=1,
-    )
+    _ratio = [
+        _Safe_div(_bu, _bv),
+        _Safe_div(_major, _minor),
+        _Safe_div(_area_sqrt, _bu) * _Safe_div(_area_sqrt, _bv),
+        _fill * _fill,
+        4.0 * math.pi * _circ * _circ,
+    ]
     # bbox 중심 오프셋 (원점 = centroid)
-    _pos = torch.stack(
-        [-(_umax + _umin) / 2.0 * _norm, -(_vmax + _vmin) / 2.0 * _norm], dim=1)
-    return torch.cat([_size, _ratio, _pos], dim=1)
+    _pos = [-(_umax + _umin) / 2.0 * _norm, -(_vmax + _vmin) / 2.0 * _norm]
+    # 한 번에 stack. 묶음마다 stack 뒤 cat 이면 ONNX 에 Concat 안 Concat - TensorRT 10.1 빌더가 죽음
+    return torch.stack(_size + _ratio + _pos, dim=1)
 
 
 def Chirality_moments(mask: Tensor, u: Tensor, v: Tensor) -> Tensor:
