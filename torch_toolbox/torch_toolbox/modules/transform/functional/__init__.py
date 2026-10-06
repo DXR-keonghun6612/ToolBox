@@ -4,6 +4,7 @@ from .filter import Sobel_kernels, Log_sharpen_kernel, Depthwise, Sobel
 from .sample import Gather_points
 from .frame import Frame, Centroid_frame, Frame_coords
 from .polar import (
-    Region_Profile, Occupancy_totals, Radial_profile, Radial_rle, Rle_signed, Rle_outline)
+    Region_Profile, Occupancy_totals, Radial_profile, Radial_rle, Rle_signed, Rle_outline,
+    Rle_thickness)
 from .region import SIZE_NAMES, RATIO_NAMES, POS_NAMES, Region_scalars, Chirality_moments
 from .photometric import Illumination_normalize, Surface_residual, Local_contrast
