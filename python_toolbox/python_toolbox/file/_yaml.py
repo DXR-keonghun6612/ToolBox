@@ -72,5 +72,6 @@ class Yaml(File_Process):
 
         with _path.open(mode="w", encoding=enc) as _f:
             yaml.dump(
-                data, _f, indent=indent, sort_keys=False, Dumper=_Smart_Dumper)
+                data, _f, indent=indent, sort_keys=False, allow_unicode=True,
+                Dumper=_Smart_Dumper)
         return True
