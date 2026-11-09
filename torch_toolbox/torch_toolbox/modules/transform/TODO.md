@@ -10,17 +10,14 @@
 - 캐스팅은 toolbox 첫 연산. TRT 가 uint8 을 입출력 텐서로만 허용하므로 첫 연산이기만 하면
   어느 쪽이든 되는데, 소비처 래퍼에 남는 연산이 없어 여기가 자연스러움
 
-### 주축 방향의 180도 확정
+### 주축 방향
 
-- 지금은 `flip_phase_deg` 로 한쪽을 골라 하나만 냄. 대칭 형상에서는 그 선택이 노이즈
-  (`Frame.anisotropy`, `Frame.flip_margin` 이 그 미결정성을 보고)
-- 두 자세를 다 내는 쪽이 거의 공짜. 재샘플링 없이 첫 자세에서 도출됨 (실측 확인, 아래 전부
-  비트 일치 또는 FP32 노이즈)
+- `angle` 은 주축과 x 축 사이 각만. 주축 두 끝 중 어느 쪽인지는 안 가름 - 소비처 몫
+- 반대 끝 자세는 재샘플링 없이 도출됨 (실측 확인, 아래 전부 비트 일치 또는 FP32 노이즈)
   - `radial_rle` : theta 축 `NT/2` circular roll
   - `region` : 위치 2항 (`centroid_du`, `centroid_dv`) 부호 반전. 크기 7 + 비율 5 는 불변
   - `moment` : 6항 전부 부호 반전 (카이랄 2, 3차 모멘트 4 - 전부 홀수차)
-  - `angle` : `+ pi`. `occupancy`, `center`, `anisotropy`, `flip_margin` 불변
-- 지금 안 함. 소비처가 두 자세를 필요로 할 때 넣음 - 그때는 `flip_phase_deg` 부품별 표도 불필요
+  - `angle` : `+ pi`. `occupancy`, `center`, `anisotropy` 불변
 
 ### `old/`
 
