@@ -1,6 +1,6 @@
-"""트리 위젯 공용 설정 헬퍼 — ``QTreeWidget`` 보일러플레이트(컬럼/헤더/resize/alternating) 통일.
+"""트리 위젯 기본값 - 컬럼 · 헤더 · resize · 교차 배경을 한 자리에.
 
-도메인-비의존(core-free). 값→트리아이템 변환처럼 도메인을 아는 헬퍼는 ``gui/_meta_tree.py`` 에 둔다.
+계약이 안 섬. 앉힐 기본값뿐이라 함수 둘.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ def make_tree(
     Args:
         headers: 헤더 라벨. 주면 컬럼 수도 이 길이로 맞춘다.
         columns: 헤더를 숨길 때(또는 라벨 없이) 컬럼 수만 지정.
-        hidden: True면 헤더를 숨긴다(``setHeaderHidden``) — ``headers`` 보다 우선.
+        hidden: True 면 헤더를 숨김. `headers` 보다 우선.
         resize: 컬럼별 ``QHeaderView.ResizeMode`` (``None`` 항목은 건너뜀).
         alternating: True면 교차 행 배경.
 

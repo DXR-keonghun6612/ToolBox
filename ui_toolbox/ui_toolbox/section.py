@@ -1,29 +1,40 @@
-"""접히는 섹션 — 헤더 클릭으로 본문을 감춘다 (도메인 비의존, core 의존 0).
+"""접히는 섹션 - 머리를 누르면 본문이 숨음.
 
-``QSplitter`` 안에서도 동작하도록, 접힐 때 max height 를 헤더 높이로 고정한다 — splitter 가 그만큼만
-내주고 나머지 공간을 형제 섹션에 넘긴다. 펴지면 해제해 다시 드래그로 크기를 나눌 수 있다.
+주제를 안 듦. 무엇이 본문인지 안 물으므로 어느 주제에도 붙음 - `style` 하나만 봄.
+
+접힐 때 최대 높이를 머리 높이로 못박음. `QSplitter` 안에서 `setVisible` 만 하면 splitter 가
+자리를 계속 물고 있어 접은 값이 안 남. 펴면 풀어 다시 끌 수 있게.
 """
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-
-from ....style import SECTION, Mark
 from PySide6.QtWidgets import QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
-_MAX_H = 16_777_215        # Qt 의 QWIDGETSIZE_MAX (PySide6 빌드에 따라 심볼이 없어 값으로 둔다)
+from .style import SECTION, Mark
+
+__all__ = ["Collapsible"]
+
+_MAX_H = 16_777_215        # Qt 의 QWIDGETSIZE_MAX. PySide6 빌드에 따라 심볼이 없어 값으로 둠
 
 
 class Collapsible(QWidget):
-    """제목 헤더 + 접히는 본문. 접으면 헤더만 남고 형제가 공간을 가져간다.
+    """제목 머리 + 접히는 본문. 접으면 머리만 남고 형제가 공간을 가져감.
 
     Attributes:
-        toggled: 펼침/접힘이 바뀜 ``(bool)``.
+        toggled: 펼침 · 접힘이 바뀜
     """
 
     toggled = Signal(bool)
 
     def __init__(self, title: str, content: QWidget, *,
                  expanded: bool = True, parent=None) -> None:
+        """Args:
+        title: 머리에 적을 문구.
+        content: 접힐 본문 위젯.
+        expanded: 처음에 펴져 있나.
+        parent: 부모 위젯.
+        """
         super().__init__(parent)
         self._content = content
 
@@ -46,6 +57,7 @@ class Collapsible(QWidget):
         self._apply(expanded)
 
     def _apply(self, expanded: bool) -> None:
+        """펼침 상태를 화살표 · 본문 · 최대 높이에 반영."""
         self._header.setArrowType(
             Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow)
         self._content.setVisible(expanded)
@@ -54,5 +66,5 @@ class Collapsible(QWidget):
         self.toggled.emit(expanded)
 
     def set_expanded(self, expanded: bool) -> None:
-        """프로그램적으로 펼침/접힘 (헤더 상태를 바꾼다)."""
+        """코드가 펼치고 접음. 머리 상태를 바꾸므로 `toggled` 가 남."""
         self._header.setChecked(expanded)

@@ -8,7 +8,8 @@ from __future__ import annotations
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout, QToolButton, QWidget
 
-from ..._item import Button
+from .....style import Now
+from ...._item import Button
 
 __all__ = ["Button_bar"]
 
@@ -25,26 +26,25 @@ class Button_bar(QWidget):
 
     fired = Signal(int)
 
-    def __init__(self, buttons: list[Button], size: int = 22, spacing: int = 0,
+    def __init__(self, buttons: list[Button],
                  parent: QWidget | None = None) -> None:
         """줄을 구성.
 
         Args:
             buttons: 버튼 선언. 순서가 곧 자리 번호.
-            size: 버튼 한 변(px).
-            spacing: 버튼 사이 간격(px).
             parent: 부모 위젯.
         """
         super().__init__(parent)
+        _size = Now()["button"]
         self._buttons: list[QToolButton] = []
         _lay = QHBoxLayout(self)
         _lay.setContentsMargins(0, 0, 0, 0)
-        _lay.setSpacing(spacing)
+        _lay.setSpacing(0)          # 한 벌로 붙어 도는 버튼들
         for _at, _spec in enumerate(buttons):
             _b = QToolButton()
             _b.setText(_spec.text)
             _b.setToolTip(_spec.tip)
-            _b.setFixedSize(size, size)
+            _b.setFixedSize(_size, _size)
             _b.setEnabled(_spec.enabled)
             _value = _at if _spec.value is None else _spec.value
             _b.clicked.connect(lambda _c=False, _v=_value: self.fired.emit(_v))

@@ -34,5 +34,8 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["ui_toolbox*"]
 
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
 [project.urls]
 "Homepage" = "https://github.com/DXR-keonghun6612/ToolBox/tree/HUB/ui_toolbox"

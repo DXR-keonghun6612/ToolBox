@@ -1,4 +1,4 @@
-"""numpy(BGR/gray) → ``QPixmap`` 변환 — 패키지 내부 전용 (``_label`` 만 사용)."""
+"""numpy(BGR · gray) -> `QPixmap` 변환. `_raster` 만 씀."""
 
 from __future__ import annotations
 

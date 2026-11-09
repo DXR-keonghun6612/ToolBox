@@ -10,16 +10,16 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from ....style import HEADER, Mark
+from ....style import HEADER, Mark, Now
 from ..._field import Field, Rows
 from ..._item import Button
-from ..widget import Button_bar
+from ..._value import Value
+from ..widget import Build, Button_bar
 
 _MOVE   = [Button("▲", "위로", value=-1), Button("▼", "아래로", value=+1)]
 _REMOVE = [Button("✕", "제거")]
@@ -32,16 +32,16 @@ def drop(*widgets: QWidget) -> None:
         _w.deleteLater()
 
 
-class Stack_view(QWidget):
-    """항목 위젯을 세로로 쌓는 목록.
+class Stack_view(Value):
+    """항목 위젯을 세로로 쌓는 목록. payload 는 `list[dict]`.
 
-    칸 위젯은 ``_cell`` 이 만듦. 기본은 한 줄 입력이고, 서브클래스가 칸 종류에 맞춰 갈아끼움.
+    칸 위젯은 등록표가 지음. 서브클래스는 `_cell` 로 갈아끼우거나 `_extras` 로 덧붙임.
 
     Attributes:
-        changed: 항목 추가 · 삭제 · 이동 · 편집 시 emit.
+        value_changed: 항목 전체
     """
 
-    changed = Signal()
+    value_changed = Signal(list)
 
     def __init__(self, data: Rows, add_label: str = "+ 추가", title: str = "",
                  header: bool = True, movable: bool = False,
@@ -63,14 +63,14 @@ class Stack_view(QWidget):
 
         _root = QVBoxLayout(self)
         _root.setContentsMargins(0, 0, 0, 0)
-        _root.setSpacing(2)
+        _root.setSpacing(Now()["tight"])
         if title:
             _root.addWidget(QLabel(title))
         if header:
             _root.addWidget(_Header(data.fields))
         self._row_lay = QVBoxLayout()
         self._row_lay.setContentsMargins(0, 0, 0, 0)
-        self._row_lay.setSpacing(2)
+        self._row_lay.setSpacing(Now()["tight"])
         _root.addLayout(self._row_lay)
         _root.addStretch(1)
         if add_label:
@@ -80,38 +80,41 @@ class Stack_view(QWidget):
         self.refresh()
 
     # ── 서브클래스 훅 ─────────────────────────────────────────────────────────
-    def _cell(self, at: int, column: Field) -> QWidget:
-        """항목 ``at`` 의 ``column`` 칸 위젯. 기본은 한 줄 입력.
+    def _cell(self, at: int, column: Field) -> Value:
+        """항목 `at` 의 `column` 칸 위젯. 등록표가 지음.
 
         Args:
             at: 항목 자리.
             column: 칸 선언.
 
         Returns:
-            그 칸을 편집할 위젯. 값이 바뀌면 ``_commit`` 을 부름.
+            그 칸을 편집할 위젯. 사람이 고치면 `_commit` 을 부름.
+
+        Raises:
+            TypeError: 등록표에 그 칸의 자리가 없을 때.
         """
-        _edit = QLineEdit(str(self._data.get(at, column.name) or ""))
-        _edit.setEnabled(column.editable)
-        if column.tip:
-            _edit.setToolTip(column.tip)
+        _w = Build(column, labelled=False)   # 이름은 머리줄이 이미 듦
+        if _w is None:
+            raise TypeError(f"등록표에 자리가 없는 칸: {column.name}: {column.type}")
+        # 그 행에 칸이 없을 때 무엇을 쓸지는 선언이 이미 듦
+        _value = self._data.get(at, column.name)
+        _w.set_value(column.default if _value is None else _value)
         if column.width:
-            _edit.setFixedWidth(column.width)
-        _edit.textChanged.connect(
-            lambda _text, _a=at, _k=column.name: self._commit(_a, _k, _text))
-        return _edit
+            _w.setFixedWidth(column.width)
+        _w.edited.connect(
+            lambda _a=at, _k=column.name, _v=_w: self._commit(_a, _k, _v.value()))
+        return _w
 
     def _extras(self, at: int) -> list[QWidget]:
         """항목 ``at`` 의 칸 뒤에 붙일 위젯들. 기본 없음."""
         return []
 
     # ── public API ────────────────────────────────────────────────────────────
-    def rows(self) -> list[dict]:
-        """지금 항목들."""
+    def value(self) -> list[dict]:
         return self._data.rows()
 
-    def load(self, rows: list[dict] | None) -> None:
-        """항목 전체를 갈아끼움. 로드는 ``changed`` 를 내지 않음."""
-        self._data.replace(rows)
+    def set_value(self, value) -> None:
+        self._data.replace(value)
         self.refresh()
 
     def refresh(self) -> None:
@@ -130,7 +133,7 @@ class Stack_view(QWidget):
         _row = QWidget()
         _lay = QHBoxLayout(_row)
         _lay.setContentsMargins(0, 0, 0, 0)
-        _lay.setSpacing(4)
+        _lay.setSpacing(Now()["gap"])
         for _col in self._data.fields:
             _w = self._cell(at, _col)
             _lay.addWidget(_w, stretch=0 if _col.width else 1)
@@ -147,37 +150,41 @@ class Stack_view(QWidget):
         _lay.addWidget(_remove)
         return _row
 
+    def _emit(self) -> None:
+        """사람이 고쳤을 때의 후처리."""
+        self.value_changed.emit(self.value())
+        self.edited.emit()
+
     def _commit(self, at: int, key: str, value) -> None:
         """칸 값을 데이터에 적음. 실제로 바뀐 때만 알림."""
         if self._data.set(at, key, value):
-            self.changed.emit()
+            self._emit()
 
     def _on_add(self) -> None:
         self._data.append({})
         self.refresh()
-        self.changed.emit()
+        self._emit()
 
     def _on_remove(self, at: int) -> None:
         if self._data.remove(at):
             self.refresh()
-            self.changed.emit()
+            self._emit()
 
     def _on_move(self, at: int, step: int) -> None:
         if self._data.move(at, step) != at:
             self.refresh()
-            self.changed.emit()
+            self._emit()
 
 
 class _Header(QWidget):
     """칸 머리글 한 줄. 항목이 쓰는 ``Field`` 그대로 지어 폭을 두 곳에 안 적음."""
 
-    _TAIL = 26   # ✕ 자리
-
     def __init__(self, fields: list[Field], parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        _style = Now()
         _lay = QHBoxLayout(self)
         _lay.setContentsMargins(0, 0, 0, 0)
-        _lay.setSpacing(4)
+        _lay.setSpacing(_style["gap"])
         for _col in fields:
             _lbl = Mark(QLabel(_col.title()), HEADER)
             if _col.tip:
@@ -187,4 +194,4 @@ class _Header(QWidget):
                 _lay.addWidget(_lbl)
             else:
                 _lay.addWidget(_lbl, stretch=1)
-        _lay.addSpacing(self._TAIL)
+        _lay.addSpacing(_style["button"] + _style["gap"])   # ✕ 자리

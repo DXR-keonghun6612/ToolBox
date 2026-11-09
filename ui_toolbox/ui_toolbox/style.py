@@ -28,7 +28,7 @@ ROLE = "role"
 MUTED   = "muted"      # 흐린 글자
 HEADER  = "header"     # 칸 머리글
 READOUT = "readout"    # 읽기 전용 값
-SURFACE = "surface"    # 그림이 앉는 바닥
+SURFACE = "surface"    # 그림이 놓이는 바닥
 SECTION = "section"    # 접히는 묶음의 머리
 LABEL   = "label"      # 폼 라벨 칸
 VALUE   = "value"      # 폼 값 칸
@@ -47,6 +47,7 @@ DEFAULT: dict[str, Any] = {
     # 치수 - 코드가 읽음
     "button": 22,           "tall_button": 30,
     "gap": 4,               "tight": 2,
+    "compact_width": 110,
 }
 
 #: `QPalette` 역할 -> 토큰 이름.
