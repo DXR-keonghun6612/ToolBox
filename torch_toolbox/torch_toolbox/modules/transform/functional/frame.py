@@ -45,12 +45,10 @@ class Frame(NamedTuple):
     Attributes:
         center: (B, 2) float. centroid (cx, cy). 입력 캔버스 px, sub-pixel
         origin: (B, 2) long. 정수 양자화한 극좌표 원점 (col, row)
-        angle:  (B,) float. 주축각 (rad). 180도 확정 완료
+        angle:  (B,) float. 주축과 x 축 사이 각 (rad), (-pi/2, pi/2]. 주축 두 끝 중 어느 쪽인지는 안 가름
         scale:  (B,) float. 회전반경 sqrt((Sxx+Syy)/2) (u). 회전 불변
         anisotropy:  (B,) float [0, 1]. k=2 harmonic 상대 크기 = `angle` 의 신뢰도.
             0 이면 주축 없음 (원환, n >= 3 회전대칭)
-        flip_margin: (B,) float [0, 1]. k=3 harmonic 상대 크기 |Z3| / sum m r^3 = 180도 확정의
-            신뢰도. 2회 회전대칭에서 0
     """
 
     center: Tensor
@@ -58,30 +56,25 @@ class Frame(NamedTuple):
     angle:  Tensor
     scale:  Tensor
     anisotropy:  Tensor
-    flip_margin: Tensor
 
 
-def Centroid_frame(mask: Tensor, *, trust_radius: int, px_size: float, flip_phase_deg: float) -> Frame:
+def Centroid_frame(mask: Tensor, *, trust_radius: int, px_size: float) -> Frame:
     """이진 마스크 -> centroid + 주축각 + 신뢰도.
 
     - 주축각 = `0.5 atan2(2 Sxy, Sxx - Syy)` (k=2 harmonic `Z2` 위상의 절반)
-    - 180도 확정 = k=3 harmonic `Z3 = sum m (dx + i dy)^3` 의 주축 투영 부호
 
     Args:
         mask: (B, 1, H, W) float. 전경 1, 배경 0. 캔버스 크기 자유.
         trust_radius: 읽는 반경 (u). 좌표 무차원화 기준.
         px_size: 입력 1 px 의 길이 / u. 상한 1.
-        flip_phase_deg: 180도 확정에 쓰는 `w = Z3 e^{-i3a}` 의 위상 (0 또는 90). 부품별 상수.
 
     Returns:
         `Frame`.
 
     Raises:
-        ValueError: `trust_radius` 가 양수 아님, `px_size` 가 (0, 1] 밖, `flip_phase_deg` 가 0, 90 아님.
+        ValueError: `trust_radius` 가 양수 아님, `px_size` 가 (0, 1] 밖.
     """
     _norm = _Norm(trust_radius, px_size)
-    if flip_phase_deg not in (0.0, 90.0):
-        raise ValueError(f"flip_phase_deg 는 0 또는 90: {flip_phase_deg}")
 
     _m = mask[:, 0]                                        # (B, H, W)
     _h, _w = mask.shape[-2], mask.shape[-1]
@@ -107,29 +100,11 @@ def Centroid_frame(mask: Tensor, *, trust_radius: int, px_size: float, flip_phas
     _scale = (_trace * 0.5).clamp_min(0.0).sqrt() * float(trust_radius)   # u
     _aniso = _Abs2(_z_re, _z_im) / _trace.clamp_min(_MOMENT_EPS)
 
-    _xx = _x * _x
-    _yy = _y * _y
-    _z3_re = (_m * _x * (_xx - 3.0 * _yy)).mean(dim=(1, 2))    # Re Z3
-    _z3_im = (_m * _y * (3.0 * _xx - _yy)).mean(dim=(1, 2))    # Im Z3
-
-    _c3, _s3 = torch.cos(3.0 * _angle), torch.sin(3.0 * _angle)
-    _r2 = _xx + _yy
-    _r3 = (_m * _r2 * _r2.sqrt()).mean(dim=(1, 2)).clamp_min(_MOMENT_EPS)
-    _flip = _Abs2(_z3_re, _z3_im) / _r3                    # (B,) [0, 1]
-
-    # 0도 = Re(w), 90도 = Im(w)
-    if flip_phase_deg == 90.0:
-        _proj = _z3_im * _c3 - _z3_re * _s3
-    else:
-        _proj = _z3_re * _c3 + _z3_im * _s3
-
-    _angle = _angle + (_proj < 0).to(_angle.dtype) * torch.pi
-
     _center = torch.stack([_cx * _norm + (_w - 1) / 2.0,
                            _cy * _norm + (_h - 1) / 2.0], dim=1)
     return Frame(
         center=_center, origin=_center.round().long(), angle=_angle, scale=_scale,
-        anisotropy=_aniso, flip_margin=_flip,
+        anisotropy=_aniso,
     )
 
 

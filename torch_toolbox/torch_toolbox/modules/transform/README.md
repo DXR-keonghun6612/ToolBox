@@ -56,7 +56,7 @@ graph RL
 - 표본 밀도는 `Radial.sub_per_px` (입력 1 px 당 축별 표본 수). 카메라가 바뀌어도 px 당 밀도 불변
 - 출력은 raw (u, 무차원 비). 정규화는 소비처
 - 입력 마스크는 fill, 최대연결성분, 정렬을 하지 않은 {0, 1}. 관통 구멍은 형상 정보
-- 정렬은 유일한 대표 자세가 아님. 대칭 형상은 각도 미결정 (n >= 3 회전대칭 `Z2 = 0`, 2회 대칭 `Z3 = 0`). `Frame.anisotropy`, `Frame.flip_margin` 이 미결정성을 보고
+- 정렬은 주축을 x 축에 맞춤. 주축 두 끝은 안 가름 - 180도 돌린 같은 형상이 다른 출력. n >= 3 회전대칭 (`Z2 = 0`) 은 각도 미결정, `Frame.anisotropy` 가 보고
 - ONNX : torch -> ONNX -> TensorRT. 전부 배포 그래프에 남음. exporter, opset 은 소비처 설정
   - torch 텐서 연산만. numpy, cv2, scipy 없음
   - 텐서 값에 따른 Python 분기, `.item()`, `.tolist()`, `int(tensor)` 없음. 반복 횟수는 인자 상수 (그래프에 펼침)
