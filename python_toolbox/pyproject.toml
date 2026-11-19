@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "python_toolbox"
-version = "1.0.1"
+version = "1.1.0"
 authors = [
   { name="Choi_keonghun & Jun_eins", email="dev.gyounghun6612@gmail.com" },
 ]
