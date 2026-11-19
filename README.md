@@ -12,9 +12,7 @@
 | [torch_toolbox](./torch_toolbox) | PyTorch 기반 딥러닝 파이프라인 프레임워크 |
 | [spatial_toolbox](./spatial_toolbox) | 3D scene graph 관리·렌더링·시뮬레이션 패키지 |
 | [vision_toolbox](./vision_toolbox) | 2D-3D 비전 연산 라이브러리 |
-| [ui_toolbox](./ui_toolbox) | PySide6 기반 도메인 비종속 Qt 부품 (칸·캔버스·진행) |
-
-미완료 작업 목록은 [TODO](./TODO.md) 참조.
+| [ui_toolbox](./ui_toolbox) | PySide6 기반 도메인 비종속 Qt 부품 - component, config 로 짓는 page |
 
 ## Install
 

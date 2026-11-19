@@ -1,6 +1,6 @@
 # torch_toolbox
 
-Config 선언 -> registry 조립으로 모델, 데이터, 학습 파이프라인을 구성하는 PyTorch 기반 코드. 미완 항목은 `TODO.md`.
+Config 선언 -> registry 조립으로 모델, 데이터, 학습 파이프라인을 구성하는 PyTorch 기반 코드.
 
 ## 구조
 
