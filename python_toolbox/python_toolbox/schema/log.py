@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, fields
 from typing import Any, TypeVar, Literal, cast
 
 from .data_schema import Data_Schema
-from .system import Time_Utils
+from ..system import Time_Utils
 
 
 class Log_Level(IntEnum):

@@ -1,4 +1,4 @@
-"""Config helpers built on top of :class:`python_toolbox.data_schema.Data_Schema`."""
+"""Config helpers built on top of :class:`python_toolbox.schema.data_schema.Data_Schema`."""
 from __future__ import annotations
 import argparse
 import types as _types
@@ -6,7 +6,7 @@ from dataclasses import dataclass, fields, MISSING
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar, Union, get_type_hints, get_origin, get_args
 
-from ..data_schema import Data_Schema
+from .data_schema import Data_Schema
 from ..registry import Registry
 from ..file import Read_from, Write_to
 

@@ -1,32 +1,31 @@
-"""Workspace template utilities for repeatable project runs."""
+"""실행 결과 자리 - 실행마다 폴더 하나(`result/<이름>/<시각_id>`)를 잡고 한 번만 만듦."""
 from __future__ import annotations
 import time
 import uuid
 from pathlib import Path
 
 
+#: 결과 자리의 맨 위 - 실행한 폴더(cwd) 기준.
 RESULT_ROOT = "./result"
 
 
-class Project_Template:
-    """Allocates a unique workspace and provides idempotent setup.
+class Workspace:
+    """실행 하나의 결과 자리. 설정 꼴을 모름 - 실행 진입점은 서브클래스가 이 위에 지음.
 
-    The template is intentionally independent from any config type. Subclasses
-    are expected to define their own execution entrypoints on top of the
-    workspace lifecycle.
+    Attributes:
+        project_name: 결과 자리 경로에 쓰는 이름.
+        workspace: 이번 실행의 폴더 - `_Setup` 이 만듦.
     """
 
     def __init__(self, project_name: str):
-        """Initializes the workspace template.
-
-        Args:
-            project_name: Stable project identifier used in the workspace path.
+        """Args:
+            project_name: 결과 자리 경로에 쓰는 이름. 실행마다 같음.
 
         Raises:
-            ValueError: If ``project_name`` is empty.
+            ValueError: `project_name` 이 비었을 때.
         """
         if not project_name:
-            raise ValueError("[ERROR] Project name cannot be empty.")
+            raise ValueError("project_name is empty")
 
         self.project_name = project_name
         _run_id = f"{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -35,11 +34,10 @@ class Project_Template:
         self._is_setup_done = False
 
     def _Setup(self) -> bool:
-        """Creates the workspace directory once.
+        """폴더를 한 번만 만듦.
 
         Returns:
-            ``False`` on the first call after creating the directory, and
-            ``True`` on repeated calls.
+            처음 불러 만들었으면 거짓, 이미 만든 뒤면 참.
         """
         if self._is_setup_done:
             return True
