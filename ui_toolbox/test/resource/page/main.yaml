@@ -1,0 +1,6 @@
+title: From file
+class: qt_QVBoxLayout
+link:
+  pick: {class: qt_QVBoxLayout}
+items:
+  body: {class: qt_QVBoxLayout, items: detail.yaml}

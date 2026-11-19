@@ -1,0 +1,2 @@
+note: {class: qt_QLabel, args: {text: detail}}
+doc: {class: Tree_view, args: {depth: 2, open: {path: pick}}}
