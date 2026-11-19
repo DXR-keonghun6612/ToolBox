@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     "PySide6",
     "numpy",
-    "opencv-python",
+    "python_toolbox @ git+https://github.com/DXR-keonghun6612/ToolBox.git@HUB#subdirectory=python_toolbox",
 ]
 
 [project.optional-dependencies]
