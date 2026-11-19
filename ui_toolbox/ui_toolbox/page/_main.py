@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QMainWindow, QWidget
 from python_toolbox.file import Make_dict_from
 
 from ._style import Base, Tokens
-from .build import Fill
+from .builder import Fill
 
 __all__ = ["Main"]
 
