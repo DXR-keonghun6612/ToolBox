@@ -1,19 +1,24 @@
 # python_toolbox
 
-`python_toolbox`는 `Data_Schema`, 파일 I/O 디스패치, 타입 안전 registry, 프로젝트 workspace 템플릿을 제공하는 범용 Python 유틸리티 패키지임.
+`python_toolbox`는 `Data_Schema`, 파일 I/O 디스패치, 타입 안전 registry, 프로젝트 workspace 템플릿, 작업 실행을 제공하는 범용 Python 유틸리티 패키지임.
 
 패키지의 중심은 네 축임.
 
 - `data_schema`: dataclass 직렬화/추출 규약
 - `file`: 확장자 기반 파일 읽기/쓰기
 - `registry`: 클래스 / Callable 등록 검증
-- `project`: `Base_Config` + `Project_Template`
+- `project`: `Base_Config` + `Project_Template` + 작업(`Call_job`, `Process_job`)
 
 ---
 
 ## 개발 로그
 
-진행 목표는 [**다음 내용**](./TODO.md)을 참고
+### 1.1.0
+
+- `project/job.py` - 작업 계약 `Job`(`on`, `start`, `stop`, `running`), 스레드 일 `Call_job`, 프로세스 일 `Process_job` · `Module_job`,
+  출력 줄 규약 `Ok` · `Fail` · `Parse`, 키워드 인자 -> flag `Flags`
+- `tests/` - 작업 시험
+- `TODO.md` 추적 끊음 - 로컬 전용
 
 ### 1.0.1
 
@@ -42,6 +47,7 @@ python_toolbox/
 └── project/
     ├── __init__.py
     ├── config.py
+    ├── job.py           # Job, Call_job, Process_job, Module_job, Ok, Fail, Parse, Flags
     └── template.py
 ```
 
@@ -52,6 +58,7 @@ python_toolbox/
 | `python_toolbox` | `Data_Schema`, `Registry`, `Handle_exp` | 코어 유틸리티 |
 | `python_toolbox.file` | `Read_from`, `Make_dict_from`, `Make_list_from`, `Write_to`, `FILE_PROCESS` | 파일 입출력 |
 | `python_toolbox.project` | `Base_Config`, `Build_sub_config`, `Build_parser_from_config`, `Project_Template` | 설정/워크스페이스 |
+| `python_toolbox.project` | `Job`, `Call_job`, `Process_job`, `Module_job`, `Ok`, `Fail`, `Parse`, `Flags` | 작업 실행, 출력 줄 규약 |
 | `python_toolbox.system` | `String`, `Operating_System`, `Server`, `Time_Utils` | 문자열/OS/시간 유틸 |
 | `python_toolbox.log` | `Logger`, `Log_Line`, `Log_Level` | 구조적 로깅 |
 
@@ -74,3 +81,7 @@ python_toolbox/
 ### 4. 등록 시점 검증
 
 `Registry`는 잘못된 클래스 상속이나 Callable 시그니처 불일치를 등록 시점에 차단함.
+
+### 5. 작업은 화면을 모름
+
+`Job`은 일을 돌리고 콜백(`start`, `progress`, `line`, `finish`)만 냄. 콜백은 작업의 스레드에서 불리고, GUI 스레드로 넘기는 것은 부르는 쪽(ui_toolbox `Job_popup`)이 맡음. 출력 줄 규약(`ok <key>` / `fail <key> <reason>`)은 UI 를 모르는 작업 프로그램과 `Process_job`이 같은 함수로 씀.
