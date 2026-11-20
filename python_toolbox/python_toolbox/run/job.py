@@ -1,14 +1,31 @@
 """작업의 바탕 - `(config, result_dir)` 로 지어지고, `Work` 를 돌리고, 실패는 그 작업 logger 의 ERROR 기록으로 셈.
 
 진행, 결과, 실패는 모두 logging 으로 남김 - 따로 event 없음. 스레드에서 돌릴지는 부르는 쪽 몫.
+job 설정(`Job_Config`)은 runner 설정의 `job` 필드 - job 은 `config.job` 에서 자기 설정을 읽음.
 """
 from __future__ import annotations
 
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from ..schema import Base_Config
+
+
+@dataclass
+class Job_Config(Base_Config):
+    """job 설정의 부모. 사용처가 상속해 job 만의 필드를 더함.
+
+    `object_type` 이 `JOB_REGISTRY` 의 job 클래스 key. 하위 타입은 `config_type` 으로 고름.
+
+    Attributes:
+        resume: 이어 쓸 job 결과 폴더. 비면 새로 - 결과 폴더는 job 이 정함.
+    """
+
+    resume: str = ""
 
 
 class _Error_counter(logging.Handler):
@@ -26,8 +43,8 @@ class Job:
     """작업 하나. 사용처가 상속해 `Work` 를 구현 - 객체는 그 안에서 지음.
 
     Attributes:
-        config: runner 가 지은 설정 - 하위 설정도 그 안에.
-        result_dir: 이번 실행의 결과 자리.
+        config: runner 가 지은 설정 - 자기 설정은 `config.job`, 하위 설정도 그 안에.
+        result_dir: job 결과 폴더들의 부모. 자기 결과 폴더는 job 이 그 아래에 만듦.
         log: 이 작업의 logger(`job.<클래스 이름>`). 실패는 `log.error` 또는 예외.
     """
 

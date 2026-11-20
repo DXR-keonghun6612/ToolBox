@@ -1,7 +1,7 @@
 """Runner - argv 로 파일 둘과 덮어쓰기를 받아 runner 설정과 하위 설정, job 을 짓고, 결과 자리와 기록 폴더를 세우고, Run 으로 job 실행까지.
 
 입력 `tests/resource/runner/`
-- `hub.yaml` : `project_name`, `job: train`, `max_iters`, `shared.patch`
+- `hub.yaml` : `project_name`, `job.object_type: train`, `max_iters`, `shared.patch`
 - `model.yaml` : `patch`(`${shared.patch}`), `depth` - `model` 아래에 놓임
 - `nameless.yaml` : `project_name` 없음
 
@@ -16,7 +16,7 @@ import pytest
 
 from python_toolbox.registry import Registry
 from python_toolbox.run import runner as runner_module
-from python_toolbox.run.job import Job
+from python_toolbox.run.job import Job, Job_Config
 from python_toolbox.run.runner import LOG_DIR, Runner, Runner_Config
 from python_toolbox.schema import Base_Config
 
@@ -64,8 +64,11 @@ def test_runner_flow(tmp_path, monkeypatch):
     assert _runner.config.model.patch == 64, "argv: sub-config through shared override"
     assert _runner.result_dir == tmp_path / "det", "argv: result dir is the project name"
     assert (_runner.result_dir / LOG_DIR).is_dir(), "argv: log dir made at build"
-    assert type(_runner.job) is _Train_Job, "argv: job picked by config.job"
+    assert type(_runner.config.job) is Job_Config and _runner.config.job.resume == "", "argv: job config built with the rest"
+    assert type(_runner.job) is _Train_Job, "argv: job class called by job.object_type"
     assert _runner.job.result_dir == _runner.result_dir, "argv: job got the result dir"
+    _resumed = _Train_Runner.From_argv([_hub, _model, "job.resume=run_a"])
+    assert _resumed.job.config.job.resume == "run_a", "argv: job reads resume from its config"
 
     # step : bad argv or setup fails
     with pytest.raises(ValueError):
@@ -75,11 +78,11 @@ def test_runner_flow(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         _Train_Runner.From_argv([str(_RES / "nameless.yaml")])
     with pytest.raises(ValueError):
-        _Train_Runner.From_argv([_hub, _model, "job="])
+        _Train_Runner.From_argv([_hub, _model, "job.object_type="])
     with pytest.raises(TypeError):
         _Train_Runner.From_argv([_hub, f"{_RES / 'model.yaml'}@modle"])
     with pytest.raises(KeyError):
-        _Train_Runner.From_argv([_hub, _model, "job=export"])
+        _Train_Runner.From_argv([_hub, _model, "job.object_type=export"])
     with pytest.raises(TypeError):
         _Jobless_Runner.From_argv([_hub, _model])
 
