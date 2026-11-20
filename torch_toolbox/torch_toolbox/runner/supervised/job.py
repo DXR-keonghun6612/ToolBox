@@ -112,7 +112,7 @@ class Supervised_Learning_Job(Learning_Job):
             if not is_test and scheduler is not None:
                 scheduler.step()
         if rank == 0 and metric is not None:
-            log_iter(current_iter, {_m.value: _a.Finalize() for _m, _a in metric.items()}, self.result_dir)
+            log_iter(current_iter, {_m.value: _a.Finalize() for _m, _a in metric.items()}, self.run_dir)
 
     def _Forward(
         self,
@@ -136,7 +136,7 @@ class Supervised_Learning_Job(Learning_Job):
         scaler: GradScaler,
         **kwargs: Any,
     ) -> None:
-        """`result_dir/checkpoints/checkpoint_{iter}.pt`. key `iter`, `model_state`, `optim_state`, `scaler_state`,
+        """`run_dir/checkpoints/checkpoint_{iter}.pt`. key `iter`, `model_state`, `optim_state`, `scaler_state`,
         (scheduler 있으면) `scheduler_state`."""
         _target = model.module if isinstance(model, nn.parallel.DistributedDataParallel) else model
         _checkpoint: dict[str, Any] = {
@@ -148,6 +148,6 @@ class Supervised_Learning_Job(Learning_Job):
         if scheduler is not None:
             _checkpoint["scheduler_state"] = scheduler.state_dict()
 
-        _save_dir = self.result_dir / "checkpoints"
+        _save_dir = self.run_dir / "checkpoints"
         _save_dir.mkdir(parents=True, exist_ok=True)
         torch.save(_checkpoint, _save_dir / f"checkpoint_{current_iter}.pt")

@@ -1,5 +1,6 @@
 project_name: toy
-job: learning
+job:
+  object_type: learning
 max_iters: 3
 save_interval: 1
 shared:

@@ -64,7 +64,7 @@ class Torch_Config(Runner_Config):
         host_name, port_num: DDP 주소.
         world_size: 전체 분산 프로세스 수(여러 노드).
         node_rank_offset: 이 노드의 rank 시작.
-        weight_path: 가중치 파일. 비면 없음. `resume` 이 있으면 무시.
+        weight_path: 가중치 파일. 비면 없음. `job.resume` 이 있으면 무시.
         start_iter: 복원할 iteration. 없으면 job 의 선택 규칙, 그것도 없으면 마지막.
         test: learning job 이 학습 대신 test mode 만 돎.
         use_amp: AMP.

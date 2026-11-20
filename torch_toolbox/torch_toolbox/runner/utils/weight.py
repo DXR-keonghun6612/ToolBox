@@ -1,4 +1,4 @@
-"""가중치 파일 고르기 - 이어서 하기면 결과 자리의 체크포인트에서, 아니면 지정한 파일. 체크포인트 iteration 은 지정, 선택 규칙, 마지막 차례."""
+"""가중치 파일 고르기 - 이어서 하기면 run 폴더의 체크포인트에서, 아니면 지정한 파일. 체크포인트 iteration 은 지정, 선택 규칙, 마지막 차례."""
 from __future__ import annotations
 
 import logging
@@ -37,14 +37,14 @@ class Iter_Selection:
     mode: str
     metric: str
 
-    def __call__(self, result_dir: Path) -> int:
+    def __call__(self, run_dir: Path) -> int:
         """학습 기록에서 iteration 고름.
 
         Raises:
             FileNotFoundError: 그 mode 의 기록 폴더 없음.
             ValueError: 그 지표를 가진 iteration 없음.
         """
-        _scores = Read_metric_log(result_dir, self.mode, self.metric)
+        _scores = Read_metric_log(run_dir, self.mode, self.metric)
         _pick = self.rule(_scores)
         _log.info("checkpoint iter picked", extra={
             "iter": _pick, "rule": self.rule.__name__, "mode": self.mode, "metric": self.metric,
@@ -52,14 +52,14 @@ class Iter_Selection:
         return _pick
 
 
-def Read_metric_log(result_dir: Path, mode: str, metric: str) -> dict[int, float]:
+def Read_metric_log(run_dir: Path, mode: str, metric: str) -> dict[int, float]:
     """`avg/<mode>/<acc_name>/iter_<i>.json`(`log_iter` 출력) -> `{iter: 값}`.
 
     Raises:
         FileNotFoundError: 그 mode 의 기록 폴더 없음.
         ValueError: 지표 없음, 또는 accumulator 여럿이 같은 이름을 냄.
     """
-    _dir = result_dir / "avg" / mode
+    _dir = run_dir / "avg" / mode
     if not _dir.exists():
         raise FileNotFoundError(f"{_dir}: no metric log - check that training ran and mode '{mode}' is right")
 
@@ -86,16 +86,16 @@ def Read_metric_log(result_dir: Path, mode: str, metric: str) -> dict[int, float
 def Resolve_weight_path(
     is_resume: bool,
     weight_path: str | None,
-    result_dir: Path,
+    run_dir: Path,
     start_iter: int | None,
     selection: Iter_Selection | None = None,
 ) -> str | None:
     """가중치 파일 경로. 이어서 하기가 먼저, 다음 `weight_path`, 둘 다 없으면 None.
 
     Args:
-        is_resume: 결과 자리가 이어서 하는 run 폴더 - `result_dir/checkpoints` 에서 찾음.
+        is_resume: `run_dir` 이 이어서 하는 run 폴더 - `run_dir/checkpoints` 에서 찾음.
         weight_path: 가중치 파일 경로.
-        result_dir: 결과 자리.
+        run_dir: job 결과 폴더.
         start_iter: 지목할 iteration.
         selection: iteration 고르기.
 
@@ -106,13 +106,13 @@ def Resolve_weight_path(
         if weight_path is not None:
             _log.warning("resume and weight_path both given - weight_path ignored", extra={"weight_path": weight_path})
 
-        _ckpt_dir = result_dir / "checkpoints"
+        _ckpt_dir = run_dir / "checkpoints"
         if not _ckpt_dir.exists():
             raise FileNotFoundError(f"{_ckpt_dir}: resume asked but no checkpoint dir")
 
         _iter = start_iter
         if _iter is None and selection is not None:
-            _iter = selection(result_dir)
+            _iter = selection(run_dir)
 
         if _iter is not None:
             _target = _ckpt_dir / f"checkpoint_{_iter}.pt"
