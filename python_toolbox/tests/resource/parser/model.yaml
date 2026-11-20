@@ -1,0 +1,3 @@
+config_type: conv
+patch: ${shared.patch}
+depth: 50

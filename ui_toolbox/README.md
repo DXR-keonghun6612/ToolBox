@@ -22,7 +22,7 @@ graph RL
     subgraph page/
         MAN[_main.py]
         POP[_popup.py]
-        JOB[_job.py]
+        PRO[_progress.py]
         STY[_style.py]
     end
     subgraph page/builder/
@@ -40,10 +40,10 @@ graph RL
     REG --> LAY
     REG --> EDT
     FND --> REG
-    JOB --> REG
+    PRO --> REG
     FND --> POP
-    FND --> JOB
-    JOB --> POP
+    FND --> PRO
+    PRO --> POP
     SHT --> FND
     BLD --> FND
     BLD --> PLC
@@ -60,13 +60,13 @@ graph RL
 | [`component/`](ui_toolbox/component) | 값 하나, 행 목록, 문서, 영상 편집, 자식 배치. 등록표 - 클래스 이름 -> 클래스 | 값의 뜻, config, page |
 | [`page/builder/`](ui_toolbox/page/builder) | config node -> 위젯 - node 검사, `link` · `action` · `items` 차례로 짓기, 영역 이름 검사(`__init__.py`). 이름 -> 클래스, 배치인가(`_find.py`), 배치 걸기(`_place.py`), key 묶음(`_names.py`), style 덮기와 QSS(`_sheet.py`) | 상태, 연결, component 하나하나 |
 | [`page/_popup.py`](ui_toolbox/page/_popup.py) | 창 하나 - `modal`, `result`, 크기, 확인 / 취소 줄 | 본문이 무엇인가 |
-| [`page/_job.py`](ui_toolbox/page/_job.py) | 작업의 콜백 -> Qt 신호(GUI 스레드), 진행 막대 · 상태 줄 · 로그 · 멈춤 · 잠금 | 일이 무엇인가, 어떻게 도는가 |
+| [`page/_progress.py`](ui_toolbox/page/_progress.py) | 진행 막대 · 상태 줄 · 로그 칸 · 멈춤 신호 · 잠금. 받는 것(`begin`, `report`, `line`, `end`)은 어느 스레드에서 와도 GUI 스레드로 | 작업, 기록 - 무엇이 진행을 보내는가 |
 | [`page/_main.py`](ui_toolbox/page/_main.py) | root page - config 를 central widget 에, root 묶음, 닫힐 때 멈출 것 | 상태, 입력의 뜻, 연결 |
 | [`page/_style.py`](ui_toolbox/page/_style.py) | 토큰 -> palette · 공통 style 객체 | 어느 위젯이 무엇인가 |
 | [`app.py`](ui_toolbox/app.py) | 앱 수명 - palette, page 띄우기, 루프 | 무엇을 띄우는가 |
 
 - 방향 `component` <- `page` <- `app`. 아래는 위를 모름
-- `page/` 바로 아래는 page 구성 셋(`Main`, `Popup`, `Job_popup`)과 공통 style, 짓는 과정은 `page/builder/`. builder 는 link 에 지을
+- `page/` 바로 아래는 page 구성 셋(`Main`, `Popup`, `Progress_popup`)과 공통 style, 짓는 과정은 `page/builder/`. builder 는 link 에 지을
   popup 클래스를, `Main` 은 `Fill` 을 앎 - 파일로는 한 방향
 - component 끼리 안 씀 - control, table, tree 는 자료형을 다루는 형제
 
@@ -91,8 +91,8 @@ graph RL
 - style 은 builder 가 객체로 넘김 - Qt 시트는 속성 값(font, color 밖)을 자식에 안 물림. 같은 key 는 같은 style - CSS 와 같음
 - config 덮어쓰기 없음 - 덮을 lib 원본 config 가 없음. 공통 style 은 `Fill` 의 `style` 인자(`Main` 이 깖)
 - 독립 창 없음 - root main 하나, 나머지는 모두 popup. page 등록 없음 - Python 클래스는 소비처의 root page 하나
-- 작업을 돌리는 것(스레드, 프로세스, 출력 줄 규약)은 UI 일이 아님 - python_toolbox `project.job`. 여기는 진행을 GUI 스레드로
-  넘겨 보이기만, 작업은 계약(`on`, `start`, `stop`, `running`)으로만 앎 - UI 를 모르는 작업 프로그램도 같은 규약을 씀
+- 작업과 기록은 UI 일이 아님 - 진행 화면은 받을 자리(`begin`, `report`, `line`, `end`, `stop_requested`)만 엶. 작업의 기록을
+  그 자리에 잇는 것은 작업과 UI 를 함께 쓰는 소비처
 - 토큰 하나에서 palette 와 공통 style 이 나옴 - `app.Run` 이 같은 토큰을 page 를 짓는 콜러블에 넘김. 색이 두 곳에 안 삶
 - component 는 "이 칸을 열어 달라" 신호(`open_requested`)만 - 영역 이름은 여는 쪽 config 가 적고, 받는 영역은 출처를 모름.
   영역은 같은 page 의 `items` key 또는 보이는 `link` key - `link` 에 있으면 popup
@@ -118,8 +118,8 @@ graph RL
 | [`Fill`](ui_toolbox/page/builder/__init__.py) | 짓기 - root node 를 이미 지은 위젯에 채움 | `Main` |
 | [`Tokens`](ui_toolbox/page/_style.py) · `Palette` · `Base` | 토큰 -> palette · 공통 style 객체 | `app.Run`, `Main` |
 | [`Names`](ui_toolbox/page/builder/_names.py) | 묶음 - key -> 객체, `find` 경로 | `.items`, `.link`, `.action` |
-| [`Popup`](ui_toolbox/page/_popup.py) | 골격 - `body` + 확인 / 취소 줄 | `link` 의 배치 class, `Job_popup` |
-| 작업 계약 | 계약 - `on(event, fn)`(`start`, `progress`, `line`, `finish`), `start`, `stop`, `running` | python_toolbox `project.job` -> [`Job_signals`](ui_toolbox/page/_job.py), `Job_popup.run` |
+| [`Popup`](ui_toolbox/page/_popup.py) | 골격 - `body` + 확인 / 취소 줄 | `link` 의 배치 class, `Progress_popup` |
+| [`Progress_popup`](ui_toolbox/page/_progress.py) | 받는 자리 - `begin`, `report`, `line`, `end`(어느 스레드에서나), `stop_requested` | 소비처가 작업 기록을 이음 |
 
 ## 워크플로
 

@@ -1,6 +1,6 @@
 """builder - config node 를 읽어 위젯을 짓고 놓음. 찾기는 `_find`, 배치는 `_place`, 묶음은 `_names`, style 은 `_sheet`.
 
-page 의 popup 클래스(`Popup`, `Job_popup`)를 앎 - link 에 지음. page 구성(`Main`)이 `Fill` 을 씀.
+page 의 popup 클래스(`Popup`, `Progress_popup`)를 앎 - link 에 지음. page 구성(`Main`)이 `Fill` 을 씀.
 
 node
 - 칸은 일곱 - `title`, `class`, `args`, `items`, `link`, `action`, `style`. 모르는 칸은 실패
