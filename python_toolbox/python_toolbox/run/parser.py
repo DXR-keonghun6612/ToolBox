@@ -32,6 +32,7 @@ class Config_Space:
 
     def __init__(self) -> None:
         self.table: dict[str, Any] = {}
+        self._schema: set[str] = set()
 
     def Load(self, path: str | Path, at: str = "") -> None:
         """설정 파일을 펼쳐 `at` 아래에 놓음. 같은 경로는 덮어씀.
@@ -59,9 +60,11 @@ class Config_Space:
         """설정 클래스의 기본값을 `at` 아래에 놓음 - 파일보다 먼저 까는 층. 선언된 필드는 파일에 없어도 덮어쓸 수 있게 됨.
 
         설정 객체를 만들지 않고 필드 정의만 읽음 - 기본값 없는 필드는 안 놓음.
+        이 층에서만 온 값은 기억함 - registry 가 선언과 다른 클래스를 고른 자리에서는 빼고 지음(그 클래스의 기본값을 씀).
         """
         for _key, _value in _Flatten(_Defaults(cls), at).items():
             self._Set(_key, _value)
+            self._schema.add(_key)
 
     def Override(self, dotlist: list[str]) -> None:
         """argv 의 `a.b=값` 들로 덮어씀. 값은 YAML 스칼라 규칙으로 읽음(`50` -> int, `true` -> bool).
@@ -100,24 +103,96 @@ class Config_Space:
             raise KeyError(f"{at}: build path not in config space")
 
         _data = self._Resolve_path(at, []) if at else self._Resolve_tree("", [])
-        return _Make(cls, _data, at or "<root>", registry)
+        return self._Make(cls, _data, at or "<root>", at, registry)
 
     def _Has(self, key: str) -> bool:
         """`key` 가 값이거나 하위 경로를 가짐."""
         _prefix = key + "."
         return key in self.table or any(_k.startswith(_prefix) for _k in self.table)
 
+    def _Schema_only(self, key: str) -> bool:
+        """`key` 와 그 아래 값이 모두 기본값 층에서만 옴."""
+        _prefix = key + "."
+        _keys = [_k for _k in self.table if _k == key or _k.startswith(_prefix)]
+        return bool(_keys) and all(_k in self._schema for _k in _keys)
+
     def _Set(self, key: str, value: Any) -> None:
         """값 하나를 놓음. 그 경로 아래 하위 경로와 위쪽 값은 지움 - 값과 하위 경로가 함께 있지 않게."""
         _prefix = key + "."
         for _k in [_k for _k in self.table if _k.startswith(_prefix)]:
             del self.table[_k]
+            self._schema.discard(_k)
 
         _parts = key.split(".")
         for _i in range(1, len(_parts)):
-            self.table.pop(".".join(_parts[:_i]), None)
+            _up = ".".join(_parts[:_i])
+            self.table.pop(_up, None)
+            self._schema.discard(_up)
 
         self.table[key] = value
+        self._schema.discard(key)
+
+    def _Make(
+        self, cls: type[C_Type], data: Any, path: str, key: str, registry: Registry | None
+    ) -> C_Type:
+        """푼 dict 로 설정을 지음. 필드 타입이 설정이면 그 값도 재귀로 지음.
+
+        registry 가 `cls` 와 다른 클래스를 고르면 기본값 층에서만 온 필드는 뺌 - `cls` 의 기본값이 그 클래스의 것을 가리지 않게.
+
+        Args:
+            path: 오류 메시지용 경로.
+            key: 공간의 경로 - root 는 `""`.
+
+        Raises:
+            TypeError: dict 아님, 설정 클래스에 없는 필드, registry 가 고른 타입이 `cls` 아님.
+            KeyError: registry 조회 실패.
+        """
+        if not isinstance(data, dict):
+            raise TypeError(f"{path}: expected a mapping for {cls.__name__}, got {type(data).__name__}")
+
+        _cls: type[C_Type] = cls
+        _type_key = data.get("config_type", "")
+        if registry is not None and _type_key:
+            _cls = registry.Get(_type_key, cls)
+        if _cls is not cls:
+            data = {_n: _v for _n, _v in data.items() if not self._Schema_only(_Join(key, _n))}
+
+        _hints = get_type_hints(_cls)
+        _kwargs: dict[str, Any] = {}
+        for _name, _value in data.items():
+            _kwargs[_name] = self._Make_field(_hints.get(_name), _value, f"{path}.{_name}", _Join(key, _name), registry)
+
+        try:
+            return _cls(**_kwargs)
+        except TypeError as _e:
+            raise TypeError(f"{path}: {_e}") from None
+
+    def _Make_field(self, hint: Any, value: Any, path: str, key: str, registry: Registry | None) -> Any:
+        """필드 하나. 타입이 설정(`X`, `X | None`, `list[X]`, `dict[str, X]`)이면 지음, 아니면 값 그대로."""
+        _origin = get_origin(hint)
+        if _origin in (Union, UnionType):
+            _args = [_a for _a in get_args(hint) if _a is not type(None)]
+            if value is None or len(_args) != 1:
+                return value
+            hint, _origin = _args[0], get_origin(_args[0])
+
+        if _origin is list and isinstance(value, list):
+            _inner = get_args(hint)
+            if _inner and _Is_config(_inner[0]):
+                return [self._Make(_inner[0], _v, f"{path}[{_i}]", f"{key}[{_i}]", registry)
+                        for _i, _v in enumerate(value)]
+            return value
+
+        if _origin is dict and isinstance(value, dict):
+            _inner = get_args(hint)
+            if len(_inner) == 2 and _Is_config(_inner[1]):
+                return {_k: self._Make(_inner[1], _v, f"{path}.{_k}", _Join(key, _k), registry)
+                        for _k, _v in value.items()}
+            return value
+
+        if _Is_config(hint):
+            return self._Make(hint, value, path, key, registry)
+        return value
 
     def _Resolve_path(self, key: str, stack: list[str]) -> Any:
         """경로 하나를 풂. 값이면 참조를 풀고, 하위 경로면 접은 dict."""
@@ -159,58 +234,9 @@ class Config_Space:
         )
 
 
-def _Make(
-    cls: type[C_Type], data: Any, path: str, registry: Registry | None
-) -> C_Type:
-    """푼 dict 로 설정을 지음. 필드 타입이 설정이면 그 값도 재귀로 지음.
-
-    Raises:
-        TypeError: dict 아님, 설정 클래스에 없는 필드, registry 가 고른 타입이 `cls` 아님.
-        KeyError: registry 조회 실패.
-    """
-    if not isinstance(data, dict):
-        raise TypeError(f"{path}: expected a mapping for {cls.__name__}, got {type(data).__name__}")
-
-    _cls: type[C_Type] = cls
-    _type_key = data.get("config_type", "")
-    if registry is not None and _type_key:
-        _cls = registry.Get(_type_key, cls)
-
-    _hints = get_type_hints(_cls)
-    _kwargs: dict[str, Any] = {}
-    for _name, _value in data.items():
-        _kwargs[_name] = _Make_field(_hints.get(_name), _value, f"{path}.{_name}", registry)
-
-    try:
-        return _cls(**_kwargs)
-    except TypeError as _e:
-        raise TypeError(f"{path}: {_e}") from None
-
-
-def _Make_field(hint: Any, value: Any, path: str, registry: Registry | None) -> Any:
-    """필드 하나. 타입이 설정(`X`, `X | None`, `list[X]`, `dict[str, X]`)이면 지음, 아니면 값 그대로."""
-    _origin = get_origin(hint)
-    if _origin in (Union, UnionType):
-        _args = [_a for _a in get_args(hint) if _a is not type(None)]
-        if value is None or len(_args) != 1:
-            return value
-        hint, _origin = _args[0], get_origin(_args[0])
-
-    if _origin is list and isinstance(value, list):
-        _inner = get_args(hint)
-        if _inner and _Is_config(_inner[0]):
-            return [_Make(_inner[0], _v, f"{path}[{_i}]", registry) for _i, _v in enumerate(value)]
-        return value
-
-    if _origin is dict and isinstance(value, dict):
-        _inner = get_args(hint)
-        if len(_inner) == 2 and _Is_config(_inner[1]):
-            return {_k: _Make(_inner[1], _v, f"{path}.{_k}", registry) for _k, _v in value.items()}
-        return value
-
-    if _Is_config(hint):
-        return _Make(hint, value, path, registry)
-    return value
+def _Join(key: str, name: str) -> str:
+    """공간 경로 잇기 - root 는 `""`."""
+    return f"{key}.{name}" if key else name
 
 
 def _Is_config(hint: Any) -> bool:
