@@ -1,4 +1,4 @@
-"""Runner - argv 로 파일 둘과 덮어쓰기를 받아 runner 설정과 하위 설정, job 을 짓고, Run 으로 결과 자리, 설정 파일, job 실행까지.
+"""Runner - argv 로 파일 둘과 덮어쓰기를 받아 runner 설정과 하위 설정, job 을 짓고, 결과 자리와 기록 폴더를 세우고, Run 으로 job 실행까지.
 
 입력 `tests/resource/runner/`
 - `hub.yaml` : `project_name`, `job: train`, `max_iters`, `shared.patch`
@@ -17,7 +17,7 @@ import pytest
 from python_toolbox.registry import Registry
 from python_toolbox.run import runner as runner_module
 from python_toolbox.run.job import Job
-from python_toolbox.run.runner import Runner, Runner_Config
+from python_toolbox.run.runner import LOG_DIR, Runner, Runner_Config
 from python_toolbox.schema import Base_Config
 
 _RES = Path(__file__).parent / "resource" / "runner"
@@ -39,7 +39,9 @@ class _Train_Config(Runner_Config):
 @_JOBS.Register_module("train")
 class _Train_Job(Job):
     def Work(self) -> None:
-        (self.result_dir / "done.txt").write_text(str(self.config.model.patch))
+        _dir = self.result_dir / "train"
+        _dir.mkdir(exist_ok=True)
+        (_dir / "done.txt").write_text(str(self.config.model.patch))
 
 
 class _Train_Runner(Runner):
@@ -51,21 +53,19 @@ class _Jobless_Runner(Runner):
     config: _Train_Config
 
 
-class _Longer_Runner(_Train_Runner):
-    RESUME_FREE = frozenset({"max_iters"})
-
-
 def test_runner_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(runner_module, "RESULT_ROOT", str(tmp_path))
     _hub = str(_RES / "hub.yaml")
     _model = f"{_RES / 'model.yaml'}@model"
 
-    # step : build from argv - files, sub-config file at a path, override, job from registry
+    # step : build from argv - files, sub-config file at a path, override, job from registry, result dir and log dir made
     _runner = _Train_Runner.From_argv([_hub, _model, "shared.patch=64"])
     assert type(_runner.config) is _Train_Config, "argv: declared config type"
     assert _runner.config.model.patch == 64, "argv: sub-config through shared override"
-    assert _runner.result_dir.parent == tmp_path / "det", "argv: result dir under project name"
+    assert _runner.result_dir == tmp_path / "det", "argv: result dir is the project name"
+    assert (_runner.result_dir / LOG_DIR).is_dir(), "argv: log dir made at build"
     assert type(_runner.job) is _Train_Job, "argv: job picked by config.job"
+    assert _runner.job.result_dir == _runner.result_dir, "argv: job got the result dir"
 
     # step : bad argv or setup fails
     with pytest.raises(ValueError):
@@ -83,30 +83,28 @@ def test_runner_flow(tmp_path, monkeypatch):
     with pytest.raises(TypeError):
         _Jobless_Runner.From_argv([_hub, _model])
 
-    # step : result dir is made once
-    assert _runner.Make_result_dir() is True, "result dir: made first time"
-    assert _runner.Make_result_dir() is False, "result dir: second call does nothing"
-
-    # step : run - config file left, job runs with config and result dir
+    # step : run - job writes into its own folder, records go to the log dir, no config file left
     assert _runner.Run() is True, "run: job finished without error records"
-    assert (_runner.result_dir / "done.txt").read_text() == "64", "run: job wrote into result dir"
-    assert (_runner.result_dir / "run.log").is_file(), "run: default log file in result dir"
-    assert (_runner.result_dir / "events.jsonl").is_file(), "run: default event file in result dir"
+    assert (_runner.result_dir / "train" / "done.txt").read_text() == "64", "run: job wrote into its own folder"
+    assert (_runner.result_dir / LOG_DIR / "run.log").is_file(), "run: default log file in log dir"
+    assert (_runner.result_dir / LOG_DIR / "events.jsonl").is_file(), "run: default event file in log dir"
+    assert sorted(_p.name for _p in _runner.result_dir.iterdir()) == [LOG_DIR, "train"], "run: runner left nothing else"
 
-    # step : the saved config alone rebuilds the same config
-    _again = _Train_Runner.From_argv([str(_runner.config_path)])
-    assert _again.config == _runner.config, "rebuild: same config from saved file"
+    # step : another run - same result dir, no folder per run
+    _again = _Train_Runner.From_argv([_hub, _model, "shared.patch=16"])
+    assert _again.result_dir == _runner.result_dir, "again: same result dir"
+    assert _again.Run() is True, "again: job finished"
+    assert (_runner.result_dir / "train" / "done.txt").read_text() == "16", "again: job folder reused"
 
-    # step : resume - same run dir, only free paths may differ
-    _resume = f"resume={_runner.result_dir}"
-    _back = _Train_Runner.From_argv([_hub, _model, "shared.patch=64", _resume, "job=train", "log.root.level=DEBUG"])
-    assert _back.result_dir == _runner.result_dir, "resume: same run dir"
-    assert _back.config.log["root"].level == "DEBUG", "resume: log may differ, built as Log_Config"
-    with pytest.raises(ValueError):
-        _Train_Runner.From_argv([_hub, _model, "shared.patch=16", _resume])
-    with pytest.raises(ValueError):
-        _Train_Runner.From_argv([_hub, _model, "shared.patch=64", "max_iters=200", _resume])
-    _longer = _Longer_Runner.From_argv([_hub, _model, "shared.patch=64", "max_iters=200", _resume])
-    assert _longer.config.max_iters == 200, "resume: whitelisted path may differ"
-    with pytest.raises(FileNotFoundError):
-        _Train_Runner.From_argv([_hub, _model, f"resume={tmp_path / 'nowhere'}"])
+    # step : a consumer moves the result dir by overriding Make_result_dir
+    class _Elsewhere_Runner(_Train_Runner):
+        def Make_result_dir(self) -> Path:
+            _dir = tmp_path / "elsewhere" / self.config.project_name
+            _dir.mkdir(parents=True, exist_ok=True)
+            return _dir
+
+    _moved = _Elsewhere_Runner.From_argv([_hub, _model])
+    assert _moved.result_dir == tmp_path / "elsewhere" / "det", "override: result dir from the consumer"
+    assert _moved.job.result_dir == _moved.result_dir, "override: job got the moved dir"
+    assert _moved.Run() is True, "override: job finished"
+    assert (_moved.result_dir / LOG_DIR / "run.log").is_file(), "override: log dir under the moved dir"
