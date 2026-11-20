@@ -1,135 +1,139 @@
-"""Structured logging primitives built on top of :class:`Data_Schema`."""
+"""실행 기록 - logger 마다 수준과 출력 위치를 정하는 표준 logging 설정. 기록하는 쪽은 `logging.getLogger(이름)` 만 씀.
+
+출력 위치 : `console` 은 stderr, 나머지는 결과 자리 안의 파일 이름 - 형식은 확장자로(`.log` text, `.jsonl` JSON Lines).
+따로 설정한 logger 는 `root` 출력으로 다시 흐르지 않음(`propagate=False`). 설정 안 한 logger 는 가장 가까운 설정된 부모를 따름.
+"""
 from __future__ import annotations
-from enum import IntEnum
-from dataclasses import dataclass, field, fields
-from typing import Any, TypeVar, Literal, cast
 
-from ..schema.data_schema import Data_Schema
-from ..system import Time_Utils
+import json
+import logging
+import sys
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
+from ..schema import Base_Config
 
-class Log_Level(IntEnum):
-    """Severity levels used by :class:`Logger`."""
-    TRA = 0  # Trace: 함수 진입/루프 등 매우 상세한 흐름
-    DBG = 1  # Debug: 디버깅용 변수 상태 및 크기
-    INF = 2  # Info: 일반적인 시스템 정상 작동 상태
-    WRN = 3  # Warning: 경고성 이벤트 (무시 가능하나 주의 필요)
-    ERR = 4  # Error: 에러 발생 (기능 일부 동작 실패)
-    CRI = 5  # Critical: 시스템 종료 수준의 치명적 오류
+#: text 형식 한 줄.
+TEXT_FORMAT = "%(asctime)s %(levelname)s %(name)s - %(message)s"
+#: 기본 text 기록 파일.
+LOG_FILE = "run.log"
+#: 기본 JSON Lines 기록 파일.
+EVENT_FILE = "events.jsonl"
+#: stderr 출력 위치 이름.
+CONSOLE = "console"
+
+#: 표준 수준 이름 -> 값.
+LEVELS = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
+}
+
+#: LogRecord 가 원래 가진 속성 - 이것 밖은 `extra` 로 들어온 필드.
+_RECORD_KEYS = set(logging.makeLogRecord({}).__dict__) | {"message", "asctime"}
+#: 지난 `Setup_log` 가 건 (logger, handler) - 다시 부를 때 걷음.
+_ATTACHED: list[tuple[logging.Logger, logging.Handler]] = []
 
 
 @dataclass
-class Log_Line(Data_Schema):
-    """Base schema for a single log record.
+class Log_Config(Base_Config):
+    """logger 하나의 수준과 출력 위치.
 
     Attributes:
-        level: Severity level stored as an integer literal from 0 to 5.
-        timestamp: Creation time formatted as text.
-        info: Free-form metadata that does not belong to explicit schema
-            fields.
-    """
-    level: Literal[0, 1, 2, 3, 4, 5] = 2
-    timestamp: str = field(
-        default_factory=lambda: Time_Utils.Make_text_from()
-    )
-    info: dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        self.level = cast(
-            Literal[0, 1, 2, 3, 4, 5], max(0, min(self.level, 5))
-        )
-
-    def Format(self) -> str:
-        """Formats the record for console output."""
-        _level_name = Log_Level(self.level).name
-        _info_str = ", ".join(f"{k}={v}" for k, v in self.info.items())
-        return f"[{self.timestamp}] {_level_name} - {_info_str}"
-
-
-LINE_TYPE = type[TypeVar("LINE", bound=Log_Line)] | None
-
-@dataclass
-class Logger(Data_Schema):
-    """Collects and prints structured log records.
-
-    Attributes:
-        _default_type: Default log-line schema used when ``line_type`` is not
-            provided.
-        book: Stored log records in insertion order.
+        level: 표준 수준 이름 - `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`.
+        to: 출력 위치 - `console` 또는 결과 자리 안의 `.log` / `.jsonl` 파일 이름.
     """
 
-    _default_type: type[Log_Line]
-    book: list[Log_Line] = field(default_factory=list)
+    level: str = "INFO"
+    to: list[str] = field(default_factory=lambda: [CONSOLE])
 
-    def Print_to_console(self, line_num: int | list[int] | None = None) -> None:
-        """Prints stored records to stdout.
 
-        Args:
-            line_num: Record index, index list, or ``None`` for all records.
-        """
-        if not self.book:
-            return
+def Default_log() -> dict[str, Log_Config]:
+    """기본 기록 설정 - `root` 하나가 `INFO` 로 stderr, `LOG_FILE`, `EVENT_FILE` 에."""
+    return {"root": Log_Config(level="INFO", to=[CONSOLE, LOG_FILE, EVENT_FILE])}
 
-        _targets = []
-        if line_num is None:
-            _targets = self.book
-        elif isinstance(line_num, int):
-            _targets = [self.book[line_num]]
-        else:
-            _targets = [self.book[i] for i in line_num if i < len(self.book)]
 
-        for _line in _targets:
-            print(_line.Format())
+class Json_formatter(logging.Formatter):
+    """record 하나를 JSON 한 줄로 - `time`, `level`, `name`, `message`, `extra` 필드, 예외면 `exc`."""
 
-    def _Logging(self, level: Log_Level, line_type: LINE_TYPE, **kwarg) -> None:
-        """Builds and stores a log line from keyword arguments."""
-        _type = line_type or self._default_type
+    def format(self, record: logging.LogRecord) -> str:
+        _out: dict[str, Any] = {
+            "time": datetime.fromtimestamp(record.created).isoformat(timespec="milliseconds"),
+            "level": record.levelname,
+            "name": record.name,
+            "message": record.getMessage(),
+        }
+        _out.update({_k: _v for _k, _v in record.__dict__.items() if _k not in _RECORD_KEYS})
+        if record.exc_info:
+            _out["exc"] = self.formatException(record.exc_info)
+        return json.dumps(_out, ensure_ascii=False, default=str)
 
-        if getattr(self, "_field_cache", None) is None:
-            self._field_cache: dict[type, set[str]] = {}
-            
-        if _type not in self._field_cache:
-            self._field_cache[_type] = {f.name for f in fields(_type)}
-            
-        _valid_fields = self._field_cache[_type]
-        
-        _init_args: dict[str, Any] = {"level": level.value}
-        _info_dict: dict[str, Any] = {}
 
-        for k, v in kwarg.items():
-            if k == "info":
-                if not isinstance(v, dict):
-                    raise TypeError("'info'는 dict 타입이어야 함.")
-                _info_dict.update(v)
-            elif k in _valid_fields:
-                _init_args[k] = v
-            else:
-                _info_dict[k] = v
-                
-        _init_args["info"] = _info_dict
+def Setup_log(result_dir: str | Path | None, log: Mapping[str, Log_Config]) -> None:
+    """logger 마다 수준을 정하고 출력 위치의 handler 를 검. 지난번에 건 것은 닫고 바꿈 - 여러 번 불러도 겹치지 않음.
 
-        self.book.append(_type(**_init_args))
+    Args:
+        result_dir: 파일 출력 위치의 폴더. 파일 출력이 없으면 `None` 가능.
+        log: logger 이름 -> 설정. `root` 는 root logger.
 
-    def Trace(self, line_type: LINE_TYPE = None, **kwargs: Any) -> None:
-        """Adds a trace-level log record."""
-        self._Logging(Log_Level.TRA, line_type, **kwargs)
+    Raises:
+        ValueError: 모르는 수준, `console` 도 `.log` / `.jsonl` 도 아닌 출력 위치, 폴더 없이 파일 출력.
+        FileNotFoundError: `result_dir` 이 없음.
+    """
+    _plan: list[tuple[logging.Logger, int, list[str]]] = []
+    for _name, _cfg in log.items():
+        _level = LEVELS.get(_cfg.level.upper())
+        if _level is None:
+            raise ValueError(f"log.{_name}.level: unknown log level {_cfg.level}")
+        for _to in _cfg.to:
+            if _to != CONSOLE and Path(_to).suffix not in (".log", ".jsonl"):
+                raise ValueError(f"log.{_name}.to: {_to} is neither '{CONSOLE}' nor a .log / .jsonl file")
+            if _to != CONSOLE and result_dir is None:
+                raise ValueError(f"log.{_name}.to: {_to} needs a result dir")
+        _logger = logging.getLogger() if _name == "root" else logging.getLogger(_name)
+        _plan.append((_logger, _level, list(_cfg.to)))
 
-    def Debug(self, line_type: LINE_TYPE = None, **kwargs: Any) -> None:
-        """Adds a debug-level log record."""
-        self._Logging(Log_Level.DBG, line_type, **kwargs)
+    if result_dir is not None and not Path(result_dir).is_dir():
+        raise FileNotFoundError(f"{result_dir}: result dir not found")
 
-    def Info(self, line_type: LINE_TYPE = None, **kwargs: Any) -> None:
-        """Adds an info-level log record."""
-        self._Logging(Log_Level.INF, line_type, **kwargs)
+    _Detach()
+    _handlers: dict[str, logging.Handler] = {}
+    for _logger, _level, _targets in _plan:
+        _logger.setLevel(_level)
+        if _logger is not logging.getLogger():
+            _logger.propagate = False
+        for _to in _targets:
+            if _to not in _handlers:
+                _handlers[_to] = _Make_handler(_to, result_dir)
+            _logger.addHandler(_handlers[_to])
+            _ATTACHED.append((_logger, _handlers[_to]))
 
-    def Warning(self, line_type: LINE_TYPE = None, **kwargs: Any) -> None:
-        """Adds a warning-level log record."""
-        self._Logging(Log_Level.WRN, line_type, **kwargs)
 
-    def Error(self, line_type: LINE_TYPE = None, **kwargs: Any) -> None:
-        """Adds an error-level log record."""
-        self._Logging(Log_Level.ERR, line_type, **kwargs)
+def _Make_handler(to: str, result_dir: str | Path | None) -> logging.Handler:
+    """출력 위치 하나의 handler."""
+    if to == CONSOLE:
+        _handler: logging.Handler = logging.StreamHandler(sys.stderr)
+        _handler.setFormatter(logging.Formatter(TEXT_FORMAT))
+        return _handler
+    _handler = logging.FileHandler(Path(result_dir) / to, encoding="utf-8")  # type: ignore[arg-type]
+    _handler.setFormatter(Json_formatter() if to.endswith(".jsonl") else logging.Formatter(TEXT_FORMAT))
+    return _handler
 
-    def Critical(self, line_type: LINE_TYPE = None, **kwargs: Any) -> None:
-        """Adds a critical-level log record."""
-        self._Logging(Log_Level.CRI, line_type, **kwargs)
+
+def _Detach() -> None:
+    """지난 `Setup_log` 가 건 handler 를 떼고 닫음. 따로 설정했던 logger 는 수준, propagate 를 되돌림."""
+    _closed: set[int] = set()
+    for _logger, _handler in _ATTACHED:
+        _logger.removeHandler(_handler)
+        if _logger is not logging.getLogger():
+            _logger.setLevel(logging.NOTSET)
+            _logger.propagate = True
+        if id(_handler) not in _closed:
+            _handler.close()
+            _closed.add(id(_handler))
+    _ATTACHED.clear()

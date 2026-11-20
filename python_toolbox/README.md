@@ -1,100 +1,78 @@
 # python_toolbox
 
-`python_toolbox`는 `Data_Schema`, 파일 I/O 디스패치, 타입 안전 registry, 실행 결과 자리, 작업 실행을 제공하는 범용 Python 유틸리티 패키지임.
+범용 Python 유틸리티 - dataclass 직렬화, 설정, 파일 입출력, 등록 검증, 작업 실행
 
-- `schema/`: dataclass 꼴과 직렬화 - `Data_Schema`, 그 위의 설정(`Base_Config`), 로그(`Log_Line`)
-- `run/`: 한 번의 실행 - 작업(`Call_job`, `Process_job`), 결과 자리(`Workspace`)
-- `file/`: 확장자 기반 파일 읽기/쓰기
-- `registry`: 클래스 / Callable 등록 검증
-- `system`: 문자열, OS, 시간 유틸
+## 구조
 
----
+계층 셋. 아래 계층은 서로 모름. `run/log`, `run/parser` 는 아래를, `run/runner` 는 `run/parser`, `run/job`, `run/log` 와 아래를 앎.
 
-## 개발 로그
+```mermaid
+graph RL
+    subgraph run
+        runner["runner - Runner, Runner_Config, RESULT_ROOT, CONFIG_FILE"]
+        parser["parser - Config_Space"]
+        log["log - Log_Config, Setup_log, Default_log, Json_formatter, LEVELS"]
+        job["job - Job"]
+    end
+    schema["schema - Data_Schema, Base_Config"]
+    file["file - Read_from, Write_to, Make_dict_from, Make_list_from, FILE_PROCESS"]
+    registry["registry - Registry"]
+    system["system - String, Operating_System, Server, Time_Utils"]
 
-### 2.0.0
-
-- `project/` 해체 - `data_schema`, `log`, `project/config` 는 `schema/`, `project/job`, `project/template` 은 `run/`. import 경로가 바뀜
-- `Project_Template` -> `run/workspace.py` 의 `Workspace`
-- `schema/`, `run/` 에 `__init__.py` 없음 - 모듈까지 적어 import
-- `project/COOKBOOK.md` 지움
-
-### 1.1.0
-
-- `project/job.py` - 작업 계약 `Job`(`on`, `start`, `stop`, `running`), 스레드 일 `Call_job`, 프로세스 일 `Process_job` · `Module_job`,
-  출력 줄 규약 `Ok` · `Fail` · `Parse`, 키워드 인자 -> flag `Flags`
-- `tests/` - 작업 시험
-- `TODO.md` 추적 끊음 - 로컬 전용
-
-### 1.0.1
-
-- `file/dispatch.py` → `file/__init__.py` 병합, `Make_dict_from`·`Make_list_from` 추가
-- `file/_csv.py` 구현 — DictReader/DictWriter 기반, `FILE_PROCESS` 등록
-- `file` 공개 API 정리 — 내부 구현(`_base`, 핸들러 클래스) `__all__` 제외
-
----
-
-## 전체 구조
-
-```text
-python_toolbox/
-├── __init__.py
-├── registry.py
-├── system.py
-├── schema/
-│   ├── data_schema.py   # Data_Schema
-│   ├── config.py        # Base_Config, Build_config, Build_config_from_file, Build_parser_from_config
-│   └── log.py           # Logger, Log_Line, Log_Level
-├── run/
-│   ├── job.py           # Job, Call_job, Process_job, Module_job, Ok, Fail, Parse, Flags
-│   └── workspace.py     # Workspace, RESULT_ROOT
-└── file/
-    ├── __init__.py      # Read_from, Make_dict_from, Make_list_from, Write_to, FILE_PROCESS
-    ├── _base.py
-    ├── _text.py
-    ├── _json.py
-    ├── _yaml.py
-    ├── _csv.py
-    └── group.py
+    runner --> parser
+    runner --> job
+    runner --> schema
+    runner --> registry
+    runner --> file
+    parser --> schema
+    parser --> file
+    parser --> registry
+    runner --> log
+    log --> schema
 ```
 
-### 공개 API
+- `Data_Schema` 는 저장용 dict(`Serialize`, 중첩 유지)와 호출용 dict(`Extract`, 평탄)를 가름
+- 설정(`Base_Config`)은 dict 로 초기화만. 파일, argv 를 모름 - 읽고 쓰는 것은 실행 쪽 몫
+- 설정 값은 `Config_Space` 한 공간에 경로 key 로 펼쳐 둠. 공용 값은 한 곳에 두고 `${경로}` 로 참조, 참조는 짓는 때(`Build`) 풂 - 나중에 덮어쓴 값이 모든 참조에 반영됨
+- argv 덮어쓰기는 공간에 있는 경로만 - 없는 경로는 오류
+- 필드 타입이 설정(`X`, `X | None`, `list[X]`)이면 `Build` 가 그 값도 설정으로 지음 - 설정 타입 필드에 dict 가 남지 않음
+- runner 설정은 공간의 root 전체. 하위 설정(model, loss 등)은 runner 설정의 설정 필드로 선언 - 놓는 경로가 곧 필드 이름
+- `Runner` 사용처는 `config` 타입만 선언해 좁힘. `Runner` 가 그 annotation 을 읽어 지음
+- argv 하나로 파일과 덮어쓰기를 함께 받음 - `=` 가 있으면 덮어쓰기, 없으면 파일, `path@at` 의 `at` 은 놓을 경로
+- job 은 runner 의 멤버. `config.job` 으로 `JOB_REGISTRY` 에서 골라 생성 때 `(config, result_dir)` 로 지음 - job 은 runner 를 모름
+- 설정은 registry 하나(`CONFIG_REGISTRY`). 다른 registry(모델, loss 등)는 job 이 안에서 씀 - runner 가 모름
+- `Run` 은 결과 자리, 지은 설정 파일(`CONFIG_FILE`), 기록 설정, job 실행 차례. 그 설정 파일 하나로 같은 설정을 다시 지음
+- 진입은 `Runner.From_argv` 하나 - job 마다 CLI 를 두지 않음. `Run` 의 참, 거짓이 종료 코드
+- job 이 쓰는 객체(모델, loader 등)는 job 안에서 지음 - DDP 처럼 worker 마다 짓는 경우도 같은 틀
+- `resume` 이 있으면 그 run 폴더를 결과 자리로 쓰고, 저장된 설정과 비교해 `job`, `resume`, `RESUME_FREE` 밖이 다르면 멈춤 - 다른 설정의 이어 하기를 막음
+- `Runner` 는 파일보다 먼저 설정 클래스의 기본값을 공간에 깜(`Load_schema`) - 선언된 필드는 파일에 없어도 argv 로 덮어씀, 선언 밖 경로는 오류
+- 기록은 표준 logging 그대로 - 기록하는 쪽은 `logging.getLogger(이름)` 만, 설정은 진입점(`Runner.Run`)이 `Setup_log` 한 번
+- logger 마다 수준과 출력 위치(`console`, 결과 자리 안의 `.log` text / `.jsonl` JSON Lines). 지표 같은 종류는 logger 이름으로 가름
+- 따로 설정한 logger 는 `root` 출력으로 다시 흐르지 않음 - 한 줄이 두 번 남지 않음
+- 파일 포맷은 확장자로 디스패치. 새 포맷은 `FILE_PROCESS` 에 처리기 등록 하나로 끝남
+- `Registry` 는 잘못된 상속, Callable 시그니처 불일치를 등록 시점에 막음
+- job 의 진행, 결과, 실패는 모두 logging 으로 남김 - 따로 event 없음
+- job 의 실패는 그 job logger(`job.<클래스 이름>`)와 하위 logger 의 ERROR 기록 수. 예외도 `log.exception` 으로 남겨 실패로
+- job 은 스레드를 모름 - 따로 돌릴지는 부르는 쪽 몫. 멈춤은 요청만, `Work` 가 `stopped` 를 보고 끝냄
+- 키마다 반복, 워커 풀 같은 실행 방식은 사용처가 `Job` 위에 얹음 - 바탕에 두지 않음
+- 폴더는 묶는 기준이 있을 때만 - `run/` 은 한 번의 실행, `file/` 은 디스패치 하나 뒤의 포맷 처리기
+- `run/` 은 다시 내보낼 것이 없어 `__init__.py` 없음 - 모듈까지 적어 import
 
-| 모듈 | 공개 항목 | 용도 |
-|---|---|---|
-| `python_toolbox.schema.data_schema` | `Data_Schema` | dataclass 직렬화/추출 |
-| `python_toolbox.schema.config` | `Base_Config`, `Build_config`, `Build_config_from_file`, `Build_parser_from_config` | 설정 |
-| `python_toolbox.schema.log` | `Logger`, `Log_Line`, `Log_Level` | 구조적 로깅 |
-| `python_toolbox.run.job` | `Job`, `Call_job`, `Process_job`, `Module_job`, `Ok`, `Fail`, `Parse`, `Flags` | 작업 실행, 출력 줄 규약 |
-| `python_toolbox.run.workspace` | `Workspace`, `RESULT_ROOT` | 실행 결과 자리 |
-| `python_toolbox.file` | `Read_from`, `Make_dict_from`, `Make_list_from`, `Write_to`, `FILE_PROCESS` | 파일 입출력 |
-| `python_toolbox.registry` | `Registry` | 등록 검증 |
-| `python_toolbox.system` | `String`, `Operating_System`, `Server`, `Time_Utils` | 문자열/OS/시간 유틸 |
+## 기반
 
----
+| 무엇 | 종류 | 쓰는 곳 |
+| --- | --- | --- |
+| `Data_Schema` | dataclass 부모 | 직렬화가 필요한 데이터 |
+| `Base_Config` | `Data_Schema` 파생 부모 | 설정 |
+| `File_Process` | 추상 클래스 + `FILE_PROCESS` 등록 | 새 파일 포맷 |
+| `Registry` | 등록표 | 이름으로 클래스, Callable 을 고름 |
+| `Job` | 작업 바탕 - `(config, result_dir)`, `Work` 구현 | runner 가 돌릴 작업 |
+| `Runner_Config` | `Base_Config` 파생 부모 - `project_name`, `shared` | 실행 진입점의 설정 |
+| `Runner` | 실행 바탕 - 설정 공간, 결과 자리 | 실행 진입점 |
 
-## 설계 원칙
+## Workflow
 
-### 1. Data_Schema 중심
-
-구조가 있는 데이터는 우선 `Data_Schema`로 표현하고, `Serialize()` / `Extract()`를 통해 저장용 dict와 호출용 dict를 분리함.
-
-### 2. 파일 I/O 디스패치 분리
-
-포맷별 구현은 `file/_json.py`, `file/_yaml.py`, `file/_text.py`, `file/_csv.py`에 두고, 외부 호출은 `Read_from` / `Make_dict_from` / `Make_list_from` / `Write_to`로 통일함. 새 포맷 추가는 `FILE_PROCESS`에 핸들러를 등록하는 것으로 완결됨.
-
-### 3. 설정과 결과 자리 분리
-
-`Base_Config`(`schema/`)는 설정 데이터 저장을 담당하고, `Workspace`(`run/`)는 실행 결과 자리와 멱등성 `_Setup()`을 담당함.
-
-### 4. 등록 시점 검증
-
-`Registry`는 잘못된 클래스 상속이나 Callable 시그니처 불일치를 등록 시점에 차단함.
-
-### 5. 작업은 화면을 모름
-
-`Job`은 일을 돌리고 콜백(`start`, `progress`, `line`, `finish`)만 냄. 콜백은 작업의 스레드에서 불리고, GUI 스레드로 넘기는 것은 부르는 쪽(ui_toolbox `Job_popup`)이 맡음. 출력 줄 규약(`ok <key>` / `fail <key> <reason>`)은 UI 를 모르는 작업 프로그램과 `Process_job`이 같은 함수로 씀.
-
-### 6. 폴더는 묶는 축이 안에 있을 때만
-
-`schema/` 는 `Data_Schema` 와 그 위의 꼴(설정, 로그), `run/` 은 한 번의 실행(작업, 결과 자리), `file/` 은 디스패치 하나 뒤의 포맷 처리기. 축이 없는 것(`registry`, `system`)은 바로 아래 낱개. `schema/`, `run/` 은 다시 내보낼 것이 없어 `__init__.py` 없음 - 모듈까지 적어 import.
+| 대상 | 목적 | 추가 의존 |
+| --- | --- | --- |
+| `pip install -e .` | 패키지 설치 | `pyyaml`, `python-dateutil` |
+| `pytest` | `tests/` 흐름 테스트 | `dev` extra |

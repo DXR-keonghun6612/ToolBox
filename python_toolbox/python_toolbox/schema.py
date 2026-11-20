@@ -1,7 +1,9 @@
-"""Base schema utilities for serialization and flattened extraction."""
+"""dataclass 직렬화 바탕 `Data_Schema` 와, 그 위의 설정 부모 `Base_Config`. 다른 모듈을 모름."""
 from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass, fields
-from typing import Any, Callable, ClassVar
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -145,3 +147,17 @@ class Data_Schema:
             _res[_f.name] = _value
 
         return _res
+
+
+@dataclass
+class Base_Config(Data_Schema):
+    """설정의 부모. dict 로 초기화만 - 파일, argv 를 모름.
+
+    Attributes:
+        config_type: registry 에서 하위 설정 클래스를 고르는 key.
+        object_type: 설정과 함께 저장하는 객체 종류 이름.
+    """
+
+    config_type: str = ""
+    object_type: str = ""
+    __exclude_extract__: ClassVar[set[str]] = {"config_type", "object_type"}
