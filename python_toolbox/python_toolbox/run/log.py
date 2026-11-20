@@ -4,7 +4,7 @@ from enum import IntEnum
 from dataclasses import dataclass, field, fields
 from typing import Any, TypeVar, Literal, cast
 
-from .data_schema import Data_Schema
+from ..schema.data_schema import Data_Schema
 from ..system import Time_Utils
 
 
