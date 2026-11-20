@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 from python_toolbox.registry import Registry
-from python_toolbox.project import Base_Config
+from python_toolbox.schema import Base_Config
 
 
 class Mode(StrEnum):

@@ -1,0 +1,2 @@
+config_type: resnet_Config
+variant: resnet${shared.depth}

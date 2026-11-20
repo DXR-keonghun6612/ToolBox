@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import torch
 from torch.nn import Module
 
-from python_toolbox.project.config import Base_Config
+from python_toolbox.schema import Base_Config
 
 
 @dataclass
