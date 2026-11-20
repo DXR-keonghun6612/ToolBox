@@ -1,68 +1,40 @@
-"""작업 화면 - 작업의 진행을 GUI 스레드로 넘기고 보여 줌. 일을 돌리는 것은 작업(python_toolbox `project.job`).
+"""진행 화면 - 진행 막대, 상태 줄, 로그 칸, 멈춤, 닫기. 작업을 모름 - 잇는 쪽이 `begin`, `report`, `line`, `end` 를 부름.
 
-작업의 계약 - `on(event, fn)`, `start()`, `stop()`, `running`. event 는 `start` `()`, `progress` `(done, total, text)`,
-`line` `(text)`, `finish` `(ok, payload)`. 콜백은 일이 도는 스레드에서 옴 - 여기서 Qt 신호로 바꿔 GUI 스레드로.
-
-- `Job_signals` - 작업 하나의 콜백 -> Qt 신호. 막대만 잇는 곳(제 화면의 `Progress_bar`)도 이것
-- `Job_popup` - 진행 막대, 상태 줄, 로그, 멈춤, 닫기. 닫기는 끝난 뒤에만. 도는 동안 잠글 위젯을 받음
+공개 메서드는 어느 스레드에서 불러도 됨 - 안에서 신호를 내고, 화면은 popup 이 사는 GUI 스레드에서 바뀜.
+멈춤 버튼은 `stop_requested` 신호만 - 무엇을 멈출지는 잇는 쪽.
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
 from .. import component
 from ._popup import Popup
 
-__all__ = ["Job_popup", "Job_signals"]
-
-#: 작업이 내는 event.
-EVENTS = ("start", "progress", "line", "finish")
+__all__ = ["Progress_popup"]
 
 
-class Job_signals(QObject):
-    """작업 하나의 콜백을 Qt 신호로. 이 객체가 GUI 스레드에 있으니 받는 쪽은 GUI 스레드에서 불림.
-
-    Attributes:
-        started: 시작
-        progress: `(done, total, text)` - `total <= 0` 은 모름
-        line: 출력 한 줄
-        finished: `(ok, payload)`
-    """
-
-    started  = Signal()
-    progress = Signal(int, int, str)
-    line     = Signal(str)
-    finished = Signal(bool, object)
-
-    def __init__(self, job: Any, parent: QObject | None = None) -> None:
-        """Args:
-        job: 작업 - `on(event, fn)` 이 있는 것.
-        parent: 부모 객체.
-        """
-        super().__init__(parent)
-        self.job = job
-        job.on("start", self.started.emit)
-        job.on("progress", lambda done, total, text="": self.progress.emit(done, total, text))
-        job.on("line", self.line.emit)
-        job.on("finish", self.finished.emit)
-
-
-class Job_popup(Popup):
-    """작업 하나를 보이는 popup. `run` 마다 작업 하나.
+class Progress_popup(Popup):
+    """진행 하나를 보이는 popup. `begin` 부터 `end` 까지가 한 번.
 
     Attributes:
         bar: 진행 막대
         state: 상태 줄 - 지난 시간, 진행, 마지막 줄
-        log: 출력 줄
+        log: 로그 칸 - `line` 으로 받은 줄
+        stop_requested: 멈춤 버튼을 누름
     """
 
     #: 상태 줄을 고치는 간격(ms).
     TICK_MS = 1000
+
+    stop_requested = Signal()
+    _begun = Signal(object)
+    _reported = Signal(int, int, str)
+    _lined = Signal(str)
+    _ended = Signal(bool, str)
 
     def __init__(self, modal: bool = False, size: list[int] | None = None, parent: QWidget | None = None) -> None:
         """Args:
@@ -92,69 +64,87 @@ class Job_popup(Popup):
         self._tick = QTimer(self)
         self._tick.setInterval(self.TICK_MS)
         self._tick.timeout.connect(self._show_state)
-        self._signals: Job_signals | None = None
+        self._begun.connect(self._on_begin)
+        self._reported.connect(self._on_report)
+        self._lined.connect(self._on_line)
+        self._ended.connect(self._on_end)
+
+        self._running = False
         self._locked: tuple[QWidget, ...] = ()
         self._started = 0.0
         self._last = ""
         self._done = self._total = 0
-        self._idle()
+        self.state.setText("대기")
+        self._stop.setEnabled(False)
 
-    def run(self, job: Any, lock: tuple[QWidget, ...] = ()) -> None:
-        """작업을 잇고 띄우고 시작. `lock` 은 끝날 때까지 잠금.
+    @property
+    def running(self) -> bool:
+        """`begin` 뒤 아직 `end` 가 안 옴."""
+        return self._running
+
+    def begin(self, lock: tuple[QWidget, ...] = ()) -> None:
+        """띄우고 시작. 로그와 진행을 비우고, `lock` 은 `end` 까지 잠금.
 
         Raises:
-            RuntimeError: 앞의 작업이 아직 돌 때.
+            RuntimeError: 앞의 진행이 아직 안 끝남.
         """
-        if self._signals is not None and self._signals.job.running:
-            raise RuntimeError("a job is still running in this popup")
+        if self._running:
+            raise RuntimeError("progress already running in this popup")
+        self._running = True
+        self._begun.emit(tuple(lock))
+
+    def report(self, done: int, total: int, text: str = "") -> None:
+        """진행. `total <= 0` 은 전체를 모름. `text` 가 있으면 상태 줄의 마지막 줄로."""
+        self._reported.emit(done, total, text)
+
+    def line(self, text: str) -> None:
+        """로그 칸에 한 줄."""
+        self._lined.emit(text)
+
+    def end(self, ok: bool, summary: str = "") -> None:
+        """끝. 성공 / 실패와 요약을 상태 줄에, 잠금 풂, 닫기 켬."""
+        self._ended.emit(ok, summary)
+
+    # ── GUI 스레드 ────────────────────────────────────────────────────────────
+    def _on_begin(self, lock: tuple[QWidget, ...]) -> None:
         self.log.clear()
         self._last = ""
         self._done = self._total = 0
-        self._signals = Job_signals(job, self)
-        self._signals.started.connect(self._on_started)
-        self._signals.progress.connect(self._on_progress)
-        self._signals.line.connect(self._on_line)
-        self._signals.finished.connect(self._on_finished)
-        self._locked = tuple(lock)
+        self._locked = lock
         for _w in self._locked:
             _w.setEnabled(False)
         self._stop.setEnabled(True)
         self._close.setEnabled(False)
-        self.show()
-        job.start()
-
-    # ── 작업의 신호 ───────────────────────────────────────────────────────────
-    def _on_started(self) -> None:
         self._started = time.monotonic()
         self.bar.report(0, 0, "시작")
+        self.show()
         self._tick.start()
         self._show_state()
 
-    def _on_progress(self, done: int, total: int, text: str) -> None:
+    def _on_report(self, done: int, total: int, text: str) -> None:
         self._done, self._total = done, total
         self.bar.report(done, total)
+        if text:
+            self._last = text
 
     def _on_line(self, text: str) -> None:
         self.log.appendPlainText(text)
         self._last = text
 
-    def _on_finished(self, ok: bool, payload: object) -> None:
+    def _on_end(self, ok: bool, summary: str) -> None:
         self._tick.stop()
         for _w in self._locked:
             _w.setEnabled(True)
         self._locked = ()
         if self._total <= 0:
             self.bar.report(1, 1)
-        self.state.setText(f"끝 - {'성공' if ok else '실패'} · {self._progress_text()} · {payload}")
+        _tail = f" · {summary}" if summary else ""
+        self.state.setText(f"끝 - {'성공' if ok else '실패'} · {self._progress_text()}{_tail}")
         self._stop.setEnabled(False)
         self._close.setEnabled(True)
+        self._running = False
 
     # ── 안 ────────────────────────────────────────────────────────────────────
-    def _idle(self) -> None:
-        self.state.setText("대기")
-        self._stop.setEnabled(False)
-        self._close.setEnabled(True)
-
     def _progress_text(self) -> str:
         return f"{self._done} / {self._total}" if self._total > 0 else f"{self._done}"
 
@@ -164,5 +154,5 @@ class Job_popup(Popup):
                            f"{self._last[:100]}")
 
     def _on_stop(self) -> None:
-        if self._signals is not None:
-            self._signals.job.stop()
+        self._stop.setEnabled(False)
+        self.stop_requested.emit()

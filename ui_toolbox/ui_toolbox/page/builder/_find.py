@@ -1,6 +1,6 @@
 """이름 -> 클래스, 클래스가 배치인가.
 
-- `qt_` 로 시작하면 PySide6 `QtWidgets`, page 의 것(`Popup`, `Job_popup`)은 여기서, 나머지는 `component` 등록표
+- `qt_` 로 시작하면 PySide6 `QtWidgets`, page 의 것(`Popup`, `Progress_popup`)은 여기서, 나머지는 `component` 등록표
 - 배치 - `QLayout`, 제 자체가 배치인 위젯(`QSplitter`, `QTabWidget`, `add(child, title)` 이 있는 위젯)
 - 없는 이름은 실패, 기본으로 안 물러남
 """
@@ -11,8 +11,8 @@ from PySide6 import QtWidgets
 from PySide6.QtWidgets import QLayout, QSplitter, QTabWidget, QWidget
 
 from ... import component
-from .._progress import Job_popup
 from .._popup import Popup
+from .._progress import Progress_popup
 
 __all__ = ["Find", "Find_at", "Is_class", "Is_host", "Is_layout", "PAGE", "QT"]
 
@@ -20,7 +20,7 @@ __all__ = ["Find", "Find_at", "Is_class", "Is_host", "Is_layout", "PAGE", "QT"]
 QT = "qt_"
 
 #: page 의 것 - 등록표 없이 여기서 앎.
-PAGE: dict[str, type] = {"Popup": Popup, "Job_popup": Job_popup}
+PAGE: dict[str, type] = {"Popup": Popup, "Progress_popup": Progress_popup}
 
 #: 제 자체가 배치인 Qt 위젯 - 자식을 바로 받음. 그 밖은 `add(child, title)` 계약.
 _HOSTS = (QSplitter, QTabWidget)
