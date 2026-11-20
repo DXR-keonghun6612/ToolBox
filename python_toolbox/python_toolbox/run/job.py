@@ -2,17 +2,25 @@
 
 진행, 결과, 실패는 모두 logging 으로 남김 - 따로 event 없음. 스레드에서 돌릴지는 부르는 쪽 몫.
 job 설정(`Job_Config`)은 runner 설정의 `job` 필드 - job 은 `config.job` 에서 자기 설정을 읽음.
+job 결과 폴더는 `Make_run_dir` - 새로면 자기 job 설정을 남기고, 이어서면 남은 설정과 자기 job 설정을 비교.
 """
 from __future__ import annotations
 
 import logging
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..file import Read_from, Write_to
 from ..schema import Base_Config
+
+#: job 결과 폴더에 남기는 job 설정 파일 이름. 폴더가 job 마다라 이름에 job 을 안 붙임.
+CONFIG_FILE = "config.yaml"
+#: 이어서 할 때 비교 밖 - 설정 값이 아니라 고르기와 자리.
+NOT_COMPARED = frozenset({"resume", "config_type", "object_type"})
 
 
 @dataclass
@@ -54,6 +62,36 @@ class Job:
         self.log = logging.getLogger(f"job.{type(self).__name__}")
         self._stop = threading.Event()
 
+    def Make_run_dir(self) -> Path:
+        """job 결과 폴더를 정함. 사용처가 override 해 이름을 바꿈.
+
+        `config.job.resume` 이 비면 결과 자리 아래 새 `<시각_id>` 를 만들고 자기 job 설정을 `CONFIG_FILE` 로 남김.
+        있으면 그 폴더에 남은 설정과 자기 job 설정을 비교 - 남은 설정에 있는 값만, `NOT_COMPARED` 밖.
+
+        Raises:
+            FileNotFoundError: 이어 쓸 폴더나 그 안의 설정 파일 없음.
+            ValueError: 남은 설정과 다름 - 다른 경로를 모두 담음.
+        """
+        _job = self.config.job
+        if not _job.resume:
+            _dir = self.result_dir / f"{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+            _dir.mkdir()
+            Write_to(_dir / CONFIG_FILE, _job.Serialize())
+            return _dir
+
+        _dir = Path(_job.resume)
+        _saved_path = _dir / CONFIG_FILE
+        if not _saved_path.is_file():
+            raise FileNotFoundError(f"{_saved_path}: no saved job config to resume")
+        _ok, _saved = Read_from(_saved_path)
+        if not _ok or not isinstance(_saved, dict):
+            raise ValueError(f"{_saved_path}: cannot read a mapping")
+
+        _diff = _Diff({_k: _v for _k, _v in _saved.items() if _k not in NOT_COMPARED}, _job.Serialize(), "")
+        if _diff:
+            raise ValueError(f"{_dir}: job config differs from the saved one at {', '.join(_diff)}")
+        return _dir
+
     def Work(self) -> None:
         """일. 사용처가 구현. 긴 일은 `stopped` 를 보고 일찍 끝냄."""
         raise NotImplementedError(f"{type(self).__name__}.Work")
@@ -91,3 +129,17 @@ class Job:
     def stopped(self) -> bool:
         """이번 실행에 멈춤 요청이 왔나."""
         return self._stop.is_set()
+
+
+def _Diff(saved: Any, current: Any, path: str) -> list[str]:
+    """남은 값과 지금 값이 다른 경로 목록. dict 는 남은 값의 key 마다 내려감 - 남은 값에 없는 key 는 안 봄."""
+    if isinstance(saved, dict) and isinstance(current, dict):
+        _out: list[str] = []
+        for _k in sorted(saved.keys(), key=str):
+            _p = f"{path}.{_k}" if path else str(_k)
+            if _k not in current:
+                _out.append(_p)
+            else:
+                _out.extend(_Diff(saved[_k], current[_k], _p))
+        return _out
+    return [] if saved == current else [path]

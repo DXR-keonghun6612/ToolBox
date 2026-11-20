@@ -16,7 +16,7 @@ import pytest
 
 from python_toolbox.registry import Registry
 from python_toolbox.run import runner as runner_module
-from python_toolbox.run.job import Job, Job_Config
+from python_toolbox.run.job import CONFIG_FILE, Job, Job_Config
 from python_toolbox.run.runner import LOG_DIR, Runner, Runner_Config
 from python_toolbox.schema import Base_Config
 
@@ -31,9 +31,15 @@ class _Model_Config(Base_Config):
 
 
 @dataclass
+class _Train_Job_Config(Job_Config):
+    epochs: int = 1
+
+
+@dataclass
 class _Train_Config(Runner_Config):
     max_iters: int = 0
     model: _Model_Config = field(default_factory=_Model_Config)
+    job: _Train_Job_Config = field(default_factory=_Train_Job_Config)
 
 
 @_JOBS.Register_module("train")
@@ -64,7 +70,8 @@ def test_runner_flow(tmp_path, monkeypatch):
     assert _runner.config.model.patch == 64, "argv: sub-config through shared override"
     assert _runner.result_dir == tmp_path / "det", "argv: result dir is the project name"
     assert (_runner.result_dir / LOG_DIR).is_dir(), "argv: log dir made at build"
-    assert type(_runner.config.job) is Job_Config and _runner.config.job.resume == "", "argv: job config built with the rest"
+    assert isinstance(_runner.config.job, Job_Config) and _runner.config.job.resume == "", \
+        "argv: job config built with the rest"
     assert type(_runner.job) is _Train_Job, "argv: job class called by job.object_type"
     assert _runner.job.result_dir == _runner.result_dir, "argv: job got the result dir"
     _resumed = _Train_Runner.From_argv([_hub, _model, "job.resume=run_a"])
@@ -98,6 +105,19 @@ def test_runner_flow(tmp_path, monkeypatch):
     assert _again.result_dir == _runner.result_dir, "again: same result dir"
     assert _again.Run() is True, "again: job finished"
     assert (_runner.result_dir / "train" / "done.txt").read_text() == "16", "again: job folder reused"
+
+    # step : job run dir - a new one under the result dir leaves the job config, resume compares only the job config
+    _run_dir = _runner.job.Make_run_dir()
+    assert _run_dir.parent == _runner.result_dir, "run dir: under the result dir"
+    assert (_run_dir / CONFIG_FILE).is_file(), "run dir: job config left"
+    _same = _Train_Runner.From_argv([_hub, _model, "shared.patch=16", f"job.resume={_run_dir}"])
+    assert _same.job.Make_run_dir() == _run_dir, "resume: runner values may differ, same job config passes"
+    _other = _Train_Runner.From_argv([_hub, _model, "job.epochs=5", f"job.resume={_run_dir}"])
+    with pytest.raises(ValueError):
+        _other.job.Make_run_dir()
+    _lost = _Train_Runner.From_argv([_hub, _model, f"job.resume={tmp_path / 'nowhere'}"])
+    with pytest.raises(FileNotFoundError):
+        _lost.job.Make_run_dir()
 
     # step : a consumer moves the result dir by overriding Make_result_dir
     class _Elsewhere_Runner(_Train_Runner):

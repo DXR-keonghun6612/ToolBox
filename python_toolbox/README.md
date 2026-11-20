@@ -12,7 +12,7 @@ graph RL
         runner["runner - Runner, Runner_Config, RESULT_ROOT, LOG_DIR"]
         parser["parser - Config_Space"]
         log["log - Log_Config, Setup_log, Default_log, Json_formatter, LEVELS"]
-        job["job - Job, Job_Config"]
+        job["job - Job, Job_Config, CONFIG_FILE"]
     end
     schema["schema - Data_Schema, Base_Config"]
     file["file - Read_from, Write_to, Make_dict_from, Make_list_from, FILE_PROCESS"]
@@ -29,6 +29,7 @@ graph RL
     runner --> log
     log --> schema
     job --> schema
+    job --> file
 ```
 
 - `Data_Schema` 는 저장용 dict(`Serialize`, 중첩 유지)와 호출용 dict(`Extract`, 평탄)를 가름
@@ -44,7 +45,9 @@ graph RL
 - 설정은 registry 하나(`CONFIG_REGISTRY`). 다른 registry(모델, loss 등)는 job 이 안에서 씀 - runner 가 모름
 - `Runner` 는 job 관리만 - 설정을 짓고 job 을 고르고 짓고 돌림. 설정 파일을 안 남김 - 남길 것은 job 이 정함
 - 결과 자리는 job 결과 폴더들의 부모 - `Make_result_dir` 한 자리가 정하고 만듦. 기본 `RESULT_ROOT/<project_name>`, 사용처가 override
-- 실행마다 새 폴더 없음 - job 결과 폴더는 job 이 결과 자리 아래에 만듦. 이어 쓸 폴더는 job 설정의 `resume`
+- 실행마다 새 폴더 없음 - job 결과 폴더는 job 이 결과 자리 아래에 만듦(`Make_run_dir`). 이어 쓸 폴더는 job 설정의 `resume`
+- job 결과 폴더에 자기 job 설정(`CONFIG_FILE`)을 남김. 이어서 할 때 그 값과 자기 job 설정을 비교 - 다르면 멈춤
+- 비교는 job 마다 자기 설정만, 남은 값에 있는 것만 - `resume`, `config_type`, `object_type` 은 밖. runner 설정 전체를 안 봄
 - `Run` 은 기록 설정, job 실행 차례. 기록은 결과 자리 아래 `LOG_DIR`
 - 진입은 `Runner.From_argv` 하나 - job 마다 CLI 를 두지 않음. `Run` 의 참, 거짓이 종료 코드
 - job 이 쓰는 객체(모델, loader 등)는 job 안에서 지음 - DDP 처럼 worker 마다 짓는 경우도 같은 틀
@@ -69,7 +72,7 @@ graph RL
 | `Base_Config` | `Data_Schema` 파생 부모 | 설정 |
 | `File_Process` | 추상 클래스 + `FILE_PROCESS` 등록 | 새 파일 포맷 |
 | `Registry` | 등록표 | 이름으로 클래스, Callable 을 고름 |
-| `Job` | 작업 바탕 - `(config, result_dir)`, `Work` 구현 | runner 가 돌릴 작업 |
+| `Job` | 작업 바탕 - `(config, result_dir)`, `Work` 구현, job 결과 폴더(`Make_run_dir` override) | runner 가 돌릴 작업 |
 | `Job_Config` | `Base_Config` 파생 부모 - `object_type`(job key), `resume` | job 설정 |
 | `Runner_Config` | `Base_Config` 파생 부모 - `project_name`, `job`, `log`, `shared` | 실행 진입점의 설정 |
 | `Runner` | 실행 바탕 - 설정 공간, 결과 자리(`Make_result_dir` override) | 실행 진입점 |
