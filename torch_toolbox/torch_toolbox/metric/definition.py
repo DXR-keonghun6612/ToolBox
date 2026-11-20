@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 from dataclasses import dataclass, field
 
-from python_toolbox.project import Base_Config
+from python_toolbox.schema import Base_Config
 
 
 @dataclass

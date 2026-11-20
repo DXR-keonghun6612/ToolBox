@@ -1,0 +1,2 @@
+sub_module_meta:
+  logits: {config_type: cross_entropy_Config}

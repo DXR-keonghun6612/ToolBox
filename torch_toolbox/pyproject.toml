@@ -27,5 +27,8 @@ dependencies = [
 [tool.setuptools.packages.find]
 include = ["torch_toolbox*"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [project.urls]
 "Homepage" = "https://github.com/SEOULTECH-AIS-gyounghun6612/AIS_torch_toolbox.git"

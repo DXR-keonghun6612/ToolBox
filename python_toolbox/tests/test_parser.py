@@ -24,11 +24,13 @@ _RES = Path(__file__).parent / "resource" / "parser"
 class _Model_Config(Base_Config):
     patch: int = 0
     depth: int = 0
+    kind: str = "base"
 
 
 @dataclass
 class _Conv_Config(_Model_Config):
     kernel: int = 3
+    kind: str = "conv"
 
 
 @dataclass
@@ -95,6 +97,16 @@ def test_config_space_flow():
     _registry.Register_module("conv")(_Conv_Config)
     _conv = _space.Build(_Model_Config, at="model", registry=_registry)
     assert type(_conv) is _Conv_Config and _conv.kernel == 3, "build: registry subclass"
+
+    # step : schema defaults of the declared class do not hide the picked subclass's own defaults
+    _layered = Config_Space()
+    _layered.Load_schema(_Model_Config, at="model")
+    _layered.Load(_RES / "hub.yaml")
+    _layered.Load(_RES / "model.yaml", at="model")
+    _picked = _layered.Build(_Model_Config, at="model", registry=_registry)
+    assert type(_picked) is _Conv_Config and _picked.kind == "conv", "schema: subclass default kept"
+    _layered.Override(["model.kind=custom"])
+    assert _layered.Build(_Model_Config, at="model", registry=_registry).kind == "custom", "schema: override still wins"
 
     # step : nested config fields are built too - field, list, optional, registry inside
     _space.Load(_RES / "nested.yaml", at="net")

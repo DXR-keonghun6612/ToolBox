@@ -1,0 +1,3 @@
+config_type: toy_model_Config
+in_dim: 4
+classes: ${shared.classes}

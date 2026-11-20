@@ -6,7 +6,7 @@ from torch import Tensor
 import torch.nn as nn
 from torch.utils.data import Dataset
 
-from python_toolbox.project import Base_Config
+from python_toolbox.schema import Base_Config
 
 from .. import Mode
 

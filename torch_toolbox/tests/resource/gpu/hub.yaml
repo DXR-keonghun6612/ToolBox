@@ -1,0 +1,34 @@
+project_name: toy
+job: learning
+max_iters: 3
+save_interval: 1
+shared:
+  classes: 3
+mode:
+  train:
+    use_grad: true
+    loader:
+      batch_size: 8
+      dataset_meta:
+        config_type: toy_dataset_Config
+        data_kwargs: {size: 64, classes: "${shared.classes}", seed: 0}
+    metric:
+      scalar: {object_type: scalar_accumulator}
+  val:
+    loader:
+      batch_size: 16
+      shuffle: false
+      dataset_meta:
+        config_type: toy_dataset_Config
+        data_kwargs: {size: 32, classes: "${shared.classes}", seed: 1}
+    metric:
+      scalar: {object_type: scalar_accumulator}
+  test:
+    loader:
+      batch_size: 16
+      shuffle: false
+      dataset_meta:
+        config_type: toy_dataset_Config
+        data_kwargs: {size: 32, classes: "${shared.classes}", seed: 2}
+    metric:
+      scalar: {object_type: scalar_accumulator}

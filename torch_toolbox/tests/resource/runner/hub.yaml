@@ -1,0 +1,13 @@
+project_name: det
+job: learning
+max_iters: 10
+shared:
+  depth: 18
+mode:
+  train:
+    use_grad: true
+    loader:
+      batch_size: 4
+      dataset_meta:
+        config_type: COCO_Dataset_Config
+    batch_monitoring: [scalar]
