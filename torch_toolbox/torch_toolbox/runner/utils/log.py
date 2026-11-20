@@ -42,7 +42,7 @@ def log_batch(
 def log_iter(
     iter_idx: int,
     results: dict[str, dict[str, Any]],
-    result_dir: Path,
+    run_dir: Path,
 ) -> None:
     """mode 별 accumulator 결과를 `metric` logger 한 줄(`extra` 에 `iter`, `<mode>/<지표>`)과 json 으로."""
     _values: dict[str, float] = {}
@@ -50,7 +50,7 @@ def log_iter(
         for _acc_name, _data in _mode_results.items():
             if not isinstance(_data, dict) or not _data:
                 continue
-            Write_to(result_dir / "avg" / _mode / _acc_name / f"iter_{iter_idx}.json", _data)
+            Write_to(run_dir / "avg" / _mode / _acc_name / f"iter_{iter_idx}.json", _data)
             _values.update({f"{_mode}/{_k}": _v for _k, _v in _data.items() if isinstance(_v, float)})
     if _values:
         _metric_log.info(

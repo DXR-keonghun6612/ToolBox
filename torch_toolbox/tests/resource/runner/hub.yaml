@@ -1,5 +1,6 @@
 project_name: det
-job: learning
+job:
+  object_type: learning
 max_iters: 10
 shared:
   depth: 18
