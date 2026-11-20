@@ -163,7 +163,7 @@ class Export_Job(Torch_Job):
                 _device, self.result_dir, _export, **_components)
             torch.onnx.export(_model, _inputs, **_onnx_cfg)
             Write_to(self.result_dir / f"{_name}_rt_cfg.yaml", _rt_cfg)
-            self.log.info("onnx exported", extra={"name": _name, "precision": _export.precision})
+            self.log.info("onnx exported", extra={"onnx_name": _name, "precision": _export.precision})
 
     def _Prepare_export_artifacts(
         self, device: torch.device, save_path: Path, export: Export_Config, **components: Any,
