@@ -1,7 +1,8 @@
 """실행의 바탕 - 설정 공간 하나에서 runner 설정을 짓고, 그 설정으로 job 하나를 지어 멤버로 둠. job 관리만 - 설정 파일을 안 남김.
 
 runner 설정은 공간의 root 전체. 하위 설정(model, loss 등)은 runner 설정의 설정 필드로 선언 - `Config_Space.Build` 가 함께 지음.
-`JOB_REGISTRY` 에 등록한 job 은 `(config, result_dir)` 로 지어짐 - job 은 runner 를 모름.
+job 설정은 runner 설정의 `job` 필드(`Job_Config`) - 설정을 다 지은 뒤 그 `object_type` 으로 `JOB_REGISTRY` 에서 job 클래스를 부름.
+job 은 `(config, result_dir)` 로 지어짐 - job 은 runner 를 모름.
 결과 자리는 job 결과 폴더들의 부모 - job 결과 폴더는 job 이 그 아래에 만듦. 기록은 그 아래 `LOG_DIR`.
 """
 from __future__ import annotations
@@ -13,7 +14,7 @@ from typing import Any, ClassVar, get_type_hints
 
 from ..registry import Registry
 from ..schema import Base_Config
-from .job import Job
+from .job import Job, Job_Config
 from .log import Default_log, Log_Config, Setup_log
 from .parser import Config_Space
 
@@ -29,21 +30,21 @@ class Runner_Config(Base_Config):
 
     Attributes:
         project_name: 결과 자리 경로에 쓰는 이름. 비면 안 됨.
-        job: 돌릴 job 의 `JOB_REGISTRY` key. 비면 안 됨 - argv 로 `job=<key>` 덮어씀.
+        job: 돌릴 job 의 설정. `job.object_type` 이 `JOB_REGISTRY` key - 비면 안 됨, argv 로 `job.object_type=<key>`.
         log: logger 이름 -> 수준과 출력 위치 - `Setup_log`. argv 로 `log.<이름>.level=DEBUG`.
         shared: 공용 값 자리. 하위 설정이 `${shared.<이름>}` 으로 참조.
     """
 
     project_name: str = ""
-    job: str = ""
+    job: Job_Config = field(default_factory=Job_Config)
     log: dict[str, Log_Config] = field(default_factory=Default_log)
     shared: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.project_name:
             raise ValueError("project_name is empty")
-        if not self.job:
-            raise ValueError("job is empty")
+        if not self.job.object_type:
+            raise ValueError("job.object_type is empty")
 
 
 class Runner:
@@ -53,13 +54,13 @@ class Runner:
         space: 읽은 설정 값의 공간.
         config: 공간 root 에서 지은 runner 설정.
         result_dir: job 결과 폴더들의 부모 - `Make_result_dir` 이 정하고 만듦.
-        job: `config.job` 으로 고른 job. 생성 때 지음, `Run` 이 시작.
+        job: `config.job.object_type` 으로 부른 job. 생성 때 지음, `Run` 이 시작.
     """
 
     config: Runner_Config
     #: 하위 설정을 `config_type` 으로 고를 registry. 없으면 선언된 필드 타입.
     CONFIG_REGISTRY: ClassVar[Registry | None] = None
-    #: `config.job` 으로 job 클래스를 고를 registry. 없으면 오류.
+    #: `config.job.object_type` 으로 job 클래스를 부를 registry. 없으면 오류.
     JOB_REGISTRY: ClassVar[Registry | None] = None
 
     def __init__(self, files: Mapping[str, str | Path], argv: Sequence[str] = ()) -> None:
@@ -68,7 +69,7 @@ class Runner:
             argv: `경로=값` 덮어쓰기.
 
         Raises:
-            ValueError: `files` 가 빔, `project_name`, `job` 이 빔.
+            ValueError: `files` 가 빔, `project_name`, `job.object_type` 이 빔.
             TypeError: `JOB_REGISTRY` 가 없음. 설정 공간이 낸 그대로 - 없는 필드.
             KeyError: 등록 안 된 job. 설정 공간이 낸 그대로 - 없는 경로.
         """
@@ -88,7 +89,7 @@ class Runner:
 
         if self.JOB_REGISTRY is None:
             raise TypeError(f"{type(self).__name__}.JOB_REGISTRY is not set")
-        _job_cls = self.JOB_REGISTRY.Get(self.config.job, Job)
+        _job_cls = self.JOB_REGISTRY.Get(self.config.job.object_type, Job)
         self.job = _job_cls(self.config, self.result_dir)
 
     @classmethod

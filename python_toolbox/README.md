@@ -4,7 +4,7 @@
 
 ## 구조
 
-계층 셋. 아래 계층은 서로 모름. `run/log`, `run/parser` 는 아래를, `run/runner` 는 `run/parser`, `run/job`, `run/log` 와 아래를 앎.
+계층 셋. 아래 계층은 서로 모름. `run/log`, `run/parser`, `run/job` 은 아래를, `run/runner` 는 `run/parser`, `run/job`, `run/log` 와 아래를 앎.
 
 ```mermaid
 graph RL
@@ -12,7 +12,7 @@ graph RL
         runner["runner - Runner, Runner_Config, RESULT_ROOT, LOG_DIR"]
         parser["parser - Config_Space"]
         log["log - Log_Config, Setup_log, Default_log, Json_formatter, LEVELS"]
-        job["job - Job"]
+        job["job - Job, Job_Config"]
     end
     schema["schema - Data_Schema, Base_Config"]
     file["file - Read_from, Write_to, Make_dict_from, Make_list_from, FILE_PROCESS"]
@@ -28,6 +28,7 @@ graph RL
     parser --> registry
     runner --> log
     log --> schema
+    job --> schema
 ```
 
 - `Data_Schema` 는 저장용 dict(`Serialize`, 중첩 유지)와 호출용 dict(`Extract`, 평탄)를 가름
@@ -38,11 +39,12 @@ graph RL
 - runner 설정은 공간의 root 전체. 하위 설정(model, loss 등)은 runner 설정의 설정 필드로 선언 - 놓는 경로가 곧 필드 이름
 - `Runner` 사용처는 `config` 타입만 선언해 좁힘. `Runner` 가 그 annotation 을 읽어 지음
 - argv 하나로 파일과 덮어쓰기를 함께 받음 - `=` 가 있으면 덮어쓰기, 없으면 파일, `path@at` 의 `at` 은 놓을 경로
-- job 은 runner 의 멤버. `config.job` 으로 `JOB_REGISTRY` 에서 골라 생성 때 `(config, result_dir)` 로 지음 - job 은 runner 를 모름
+- job 설정은 runner 설정의 하위 필드 `job`(`Job_Config`) - 설정을 다 지은 뒤 그 값으로 클래스를 부름, job 클래스가 설정 타입을 안 정함
+- job 은 runner 의 멤버. `config.job.object_type` 으로 `JOB_REGISTRY` 에서 불러 생성 때 `(config, result_dir)` 로 지음 - job 은 runner 를 모름
 - 설정은 registry 하나(`CONFIG_REGISTRY`). 다른 registry(모델, loss 등)는 job 이 안에서 씀 - runner 가 모름
 - `Runner` 는 job 관리만 - 설정을 짓고 job 을 고르고 짓고 돌림. 설정 파일을 안 남김 - 남길 것은 job 이 정함
 - 결과 자리는 job 결과 폴더들의 부모 - `Make_result_dir` 한 자리가 정하고 만듦. 기본 `RESULT_ROOT/<project_name>`, 사용처가 override
-- 실행마다 새 폴더 없음 - job 결과 폴더는 job 이 결과 자리 아래에 만듦. 이어 하기(`resume`)도 job 설정
+- 실행마다 새 폴더 없음 - job 결과 폴더는 job 이 결과 자리 아래에 만듦. 이어 쓸 폴더는 job 설정의 `resume`
 - `Run` 은 기록 설정, job 실행 차례. 기록은 결과 자리 아래 `LOG_DIR`
 - 진입은 `Runner.From_argv` 하나 - job 마다 CLI 를 두지 않음. `Run` 의 참, 거짓이 종료 코드
 - job 이 쓰는 객체(모델, loader 등)는 job 안에서 지음 - DDP 처럼 worker 마다 짓는 경우도 같은 틀
@@ -68,7 +70,8 @@ graph RL
 | `File_Process` | 추상 클래스 + `FILE_PROCESS` 등록 | 새 파일 포맷 |
 | `Registry` | 등록표 | 이름으로 클래스, Callable 을 고름 |
 | `Job` | 작업 바탕 - `(config, result_dir)`, `Work` 구현 | runner 가 돌릴 작업 |
-| `Runner_Config` | `Base_Config` 파생 부모 - `project_name`, `shared` | 실행 진입점의 설정 |
+| `Job_Config` | `Base_Config` 파생 부모 - `object_type`(job key), `resume` | job 설정 |
+| `Runner_Config` | `Base_Config` 파생 부모 - `project_name`, `job`, `log`, `shared` | 실행 진입점의 설정 |
 | `Runner` | 실행 바탕 - 설정 공간, 결과 자리(`Make_result_dir` override) | 실행 진입점 |
 
 ## Workflow
