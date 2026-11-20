@@ -12,7 +12,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QPushButton, QWidget
 
 from ui_toolbox.page import Fill, Job_popup, Job_signals
-from ui_toolbox.page._job import EVENTS
+from ui_toolbox.page._progress import EVENTS
 
 
 def _wait(ready, ms: int = 2000) -> None:

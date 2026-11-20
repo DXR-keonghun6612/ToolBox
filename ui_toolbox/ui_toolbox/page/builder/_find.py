@@ -11,7 +11,7 @@ from PySide6 import QtWidgets
 from PySide6.QtWidgets import QLayout, QSplitter, QTabWidget, QWidget
 
 from ... import component
-from .._job import Job_popup
+from .._progress import Job_popup
 from .._popup import Popup
 
 __all__ = ["Find", "Find_at", "Is_class", "Is_host", "Is_layout", "PAGE", "QT"]

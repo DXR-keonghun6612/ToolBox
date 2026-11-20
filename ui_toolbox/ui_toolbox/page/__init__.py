@@ -3,7 +3,7 @@
 방향 `component` <- `page` <- `app`. 아래는 위를 모름.
 """
 
-from ._job import Job_popup, Job_signals
+from ._progress import Job_popup, Job_signals
 from ._main import Main
 from ._popup import Popup
 from ._style import Base, Palette, Tokens
