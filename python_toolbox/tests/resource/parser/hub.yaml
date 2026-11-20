@@ -1,0 +1,6 @@
+shared:
+  patch: 32
+  name: det
+run:
+  max_iters: 100
+  tag: ${shared.name}_v1
