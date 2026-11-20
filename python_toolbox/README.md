@@ -9,7 +9,7 @@
 ```mermaid
 graph RL
     subgraph run
-        runner["runner - Runner, Runner_Config, RESULT_ROOT, CONFIG_FILE"]
+        runner["runner - Runner, Runner_Config, RESULT_ROOT, LOG_DIR"]
         parser["parser - Config_Space"]
         log["log - Log_Config, Setup_log, Default_log, Json_formatter, LEVELS"]
         job["job - Job"]
@@ -23,7 +23,6 @@ graph RL
     runner --> job
     runner --> schema
     runner --> registry
-    runner --> file
     parser --> schema
     parser --> file
     parser --> registry
@@ -41,13 +40,15 @@ graph RL
 - argv 하나로 파일과 덮어쓰기를 함께 받음 - `=` 가 있으면 덮어쓰기, 없으면 파일, `path@at` 의 `at` 은 놓을 경로
 - job 은 runner 의 멤버. `config.job` 으로 `JOB_REGISTRY` 에서 골라 생성 때 `(config, result_dir)` 로 지음 - job 은 runner 를 모름
 - 설정은 registry 하나(`CONFIG_REGISTRY`). 다른 registry(모델, loss 등)는 job 이 안에서 씀 - runner 가 모름
-- `Run` 은 결과 자리, 지은 설정 파일(`CONFIG_FILE`), 기록 설정, job 실행 차례. 그 설정 파일 하나로 같은 설정을 다시 지음
+- `Runner` 는 job 관리만 - 설정을 짓고 job 을 고르고 짓고 돌림. 설정 파일을 안 남김 - 남길 것은 job 이 정함
+- 결과 자리는 job 결과 폴더들의 부모 - `Make_result_dir` 한 자리가 정하고 만듦. 기본 `RESULT_ROOT/<project_name>`, 사용처가 override
+- 실행마다 새 폴더 없음 - job 결과 폴더는 job 이 결과 자리 아래에 만듦. 이어 하기(`resume`)도 job 설정
+- `Run` 은 기록 설정, job 실행 차례. 기록은 결과 자리 아래 `LOG_DIR`
 - 진입은 `Runner.From_argv` 하나 - job 마다 CLI 를 두지 않음. `Run` 의 참, 거짓이 종료 코드
 - job 이 쓰는 객체(모델, loader 등)는 job 안에서 지음 - DDP 처럼 worker 마다 짓는 경우도 같은 틀
-- `resume` 이 있으면 그 run 폴더를 결과 자리로 쓰고, 저장된 설정과 비교해 `job`, `resume`, `RESUME_FREE` 밖이 다르면 멈춤 - 다른 설정의 이어 하기를 막음
 - `Runner` 는 파일보다 먼저 설정 클래스의 기본값을 공간에 깜(`Load_schema`) - 선언된 필드는 파일에 없어도 argv 로 덮어씀, 선언 밖 경로는 오류
 - 기록은 표준 logging 그대로 - 기록하는 쪽은 `logging.getLogger(이름)` 만, 설정은 진입점(`Runner.Run`)이 `Setup_log` 한 번
-- logger 마다 수준과 출력 위치(`console`, 결과 자리 안의 `.log` text / `.jsonl` JSON Lines). 지표 같은 종류는 logger 이름으로 가름
+- logger 마다 수준과 출력 위치(`console`, `LOG_DIR` 안의 `.log` text / `.jsonl` JSON Lines). 지표 같은 종류는 logger 이름으로 가름
 - 따로 설정한 logger 는 `root` 출력으로 다시 흐르지 않음 - 한 줄이 두 번 남지 않음
 - 파일 포맷은 확장자로 디스패치. 새 포맷은 `FILE_PROCESS` 에 처리기 등록 하나로 끝남
 - `Registry` 는 잘못된 상속, Callable 시그니처 불일치를 등록 시점에 막음
@@ -68,7 +69,7 @@ graph RL
 | `Registry` | 등록표 | 이름으로 클래스, Callable 을 고름 |
 | `Job` | 작업 바탕 - `(config, result_dir)`, `Work` 구현 | runner 가 돌릴 작업 |
 | `Runner_Config` | `Base_Config` 파생 부모 - `project_name`, `shared` | 실행 진입점의 설정 |
-| `Runner` | 실행 바탕 - 설정 공간, 결과 자리 | 실행 진입점 |
+| `Runner` | 실행 바탕 - 설정 공간, 결과 자리(`Make_result_dir` override) | 실행 진입점 |
 
 ## Workflow
 
