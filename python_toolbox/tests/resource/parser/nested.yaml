@@ -1,0 +1,8 @@
+depth: 18
+backbone:
+  width: ${shared.patch}
+heads:
+  - width: 8
+  - config_type: wide
+    width: 16
+spare: null

@@ -1,0 +1,5 @@
+project_name: det
+job: train
+max_iters: 100
+shared:
+  patch: 32
