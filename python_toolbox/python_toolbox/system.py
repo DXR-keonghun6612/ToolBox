@@ -1,4 +1,4 @@
-"""String, OS, and time helpers used across the project."""
+"""문자열, OS, 시각 도우미. 다른 모듈을 모름."""
 
 from __future__ import annotations
 from enum import auto
