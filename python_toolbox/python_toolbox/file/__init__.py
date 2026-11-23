@@ -1,4 +1,7 @@
-"""Unified file I/O package for text, JSON, and YAML handlers."""
+"""파일 읽기, 쓰기 - 확장자로 처리기를 고름(`FILE_PROCESS`). text, JSON, YAML, CSV.
+
+새 포맷은 `File_Process` 파생 처리기를 `FILE_PROCESS` 에 등록 하나.
+"""
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast

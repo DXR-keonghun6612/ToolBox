@@ -1,4 +1,4 @@
-"""Type-checked registry for classes and callables."""
+"""이름 -> 클래스, Callable 등록표. 잘못된 상속, Callable 시그니처 불일치를 등록 시점에 막음."""
 from __future__ import annotations
 from typing import Any, TypeVar, Generic, Callable, get_origin, get_args, cast, overload
 import inspect

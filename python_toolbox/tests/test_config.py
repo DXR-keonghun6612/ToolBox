@@ -1,6 +1,6 @@
 """설정 공간 - 파일 둘을 한 공간에 놓고, argv 로 공용 값을 덮어쓰고, 참조를 풀어 설정을 지음.
 
-입력 `tests/resource/parser/`
+입력 `tests/resource/config/`
 - `hub.yaml` : `shared.patch`, `shared.name`, `run.tag`(`${shared.name}` 이 섞인 문자열)
 - `model.yaml` : `config_type`, `patch`(`${shared.patch}` 하나), `depth`
 - `broken.yaml` : 순환 참조 `a` <-> `b`, 없는 경로 참조 `lost`
@@ -13,11 +13,10 @@ from pathlib import Path
 
 import pytest
 
+from python_toolbox.config import Base_Config, Config_Space
 from python_toolbox.registry import Registry
-from python_toolbox.run.parser import Config_Space
-from python_toolbox.schema import Base_Config
 
-_RES = Path(__file__).parent / "resource" / "parser"
+_RES = Path(__file__).parent / "resource" / "config"
 
 
 @dataclass
@@ -70,33 +69,32 @@ def test_config_space_flow():
     # step : load two files into one space
     _space.Load(_RES / "hub.yaml")
     _space.Load(_RES / "model.yaml", at="model")
-    assert _space.table["model.patch"] == "${shared.patch}", "load: reference kept as text"
+    assert _space.Get("model.patch") == 32, "load: read through the reference"
     with pytest.raises(FileNotFoundError):
         _space.Load(_RES / "missing.yaml")
 
-    # step : override a shared value from argv
+    # step : override a shared value from argv - references resolve at read time, so they follow
     _space.Override(["shared.patch=64"])
-    assert _space.table["shared.patch"] == 64, "override: yaml scalar to int"
+    assert _space.Get("shared.patch") == 64 and _space.Get("model.patch") == 64, "override: yaml scalar, followed"
     with pytest.raises(KeyError):
         _space.Override(["shared.ptch=1"])
     with pytest.raises(ValueError):
         _space.Override(["shared.patch"])
 
-    # step : build - whole reference keeps type, mixed reference becomes text
-    _model = _space.Build(_Model_Config, at="model")
-    assert _model.patch == 64 and _model.depth == 50, "build: shared value through reference"
-    _run = _space.Build(_Run_Config, at="run")
-    assert _run.tag == "det_v1", "build: mixed reference to text"
-    with pytest.raises(KeyError):
-        _space.Build(_Model_Config, at="nowhere")
-    with pytest.raises(TypeError):
-        _space.Build(_Run_Config, at="model")
-
-    # step : registry picks the subclass by config_type
+    # step : build - registry picks the subclass by config_type, whole reference keeps type, mixed becomes text
     _registry = Registry[type[_Model_Config]]("model", _Model_Config)
     _registry.Register_module("conv")(_Conv_Config)
     _conv = _space.Build(_Model_Config, at="model", registry=_registry)
     assert type(_conv) is _Conv_Config and _conv.kernel == 3, "build: registry subclass"
+    assert _conv.patch == 64 and _conv.depth == 50, "build: shared value through reference"
+    _run = _space.Build(_Run_Config, at="run")
+    assert _run.tag == "det_v1", "build: mixed reference to text"
+    with pytest.raises(KeyError):
+        _space.Build(_Model_Config, at="nowhere")
+    with pytest.raises(ValueError):
+        _space.Build(_Model_Config, at="model")
+    with pytest.raises(TypeError):
+        _space.Build(_Run_Config, at="model", registry=_registry)
 
     # step : schema defaults of the declared class do not hide the picked subclass's own defaults
     _layered = Config_Space()

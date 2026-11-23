@@ -1,4 +1,9 @@
-"""dataclass 직렬화 바탕 `Data_Schema` 와, 그 위의 설정 부모 `Base_Config`. 다른 모듈을 모름."""
+"""dataclass 직렬화 바탕 `Data_Schema`. 다른 모듈을 모름.
+
+`Data_Schema` 는 저장용 dict(`Serialize`, 중첩 유지)와 호출용 dict(`Extract`, 평탄)를 가름.
+중첩 dict 로 내려가는 걸음은 `Walk` 하나 - 규칙(`Walk_rule`)은 쓰는 쪽이 듦. 저장용은 `SERIALIZE`, 빈 규칙은 필드 이름 그대로.
+규칙 상자는 클래스 속성(`__exclude_serialize__` 등) - 파생에서 MRO 로 합쳐짐(`__merge_specs__`).
+"""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -67,49 +72,8 @@ class Data_Schema:
             setattr(cls, _name, _merged)
 
     def Serialize(self) -> dict[str, Any]:
-        """Builds a nested dictionary representation for persistence.
-
-        Returns:
-            A serialized dictionary representation of the instance.
-        """
-        _res: dict[str, Any] = {}
-
-        _cls = self.__class__
-        _exclude = _cls.__exclude_serialize__
-        _keys = _cls.__custom_keys__
-        _serializers = _cls.__custom_serializers__
-
-        for _f in fields(self):
-            if _f.name in _exclude:
-                continue
-
-            _value = getattr(self, _f.name)
-            _key = _keys.get(_f.name, _f.name)
-
-            _serializer = _serializers.get(_f.name)
-            if _serializer is not None:
-                _res[_key] = _serializer(_value)
-                continue
-
-            _res[_key] = self._serialize_value(_value)
-
-        return _res
-
-    def _serialize_value(self, value: Any) -> Any:
-        """Serializes a single value recursively."""
-        if value is None or isinstance(value, (str, int, float, bool)):
-            return value
-
-        if isinstance(value, Data_Schema):
-            return value.Serialize()
-
-        if isinstance(value, dict):
-            return {k: self._serialize_value(v) for k, v in value.items()}
-
-        if isinstance(value, (list, tuple, set)):
-            return type(value)(self._serialize_value(item) for item in value)
-
-        return value
+        """저장용 중첩 dict - `SERIALIZE` 규칙의 `Walk`. 노드마다 `__exclude_serialize__`, `__custom_keys__`, `__custom_serializers__`."""
+        return Walk(self, SERIALIZE)
 
     def Extract(self) -> dict[str, Any]:
         """Builds a flattened dictionary for runtime argument injection.
@@ -149,15 +113,54 @@ class Data_Schema:
         return _res
 
 
-@dataclass
-class Base_Config(Data_Schema):
-    """설정의 부모. dict 로 초기화만 - 파일, argv 를 모름.
+@dataclass(frozen=True)
+class Walk_rule:
+    """`Walk` 의 규칙 - 노드 클래스에서 읽을 규칙 상자의 속성 이름. 이름이 None 이거나 노드에 그 속성이 없으면 그 규칙 없음.
 
     Attributes:
-        config_type: registry 에서 하위 설정 클래스를 고르는 key.
-        object_type: 설정과 함께 저장하는 객체 종류 이름.
+        skip: 뺄 칸 집합.
+        keys: 칸 이름 -> 내놓을 key.
+        values: 칸 이름 -> 값을 바꾸는 함수. 바꾼 값은 안으로 안 내려감.
+        keep_container: list, tuple, set 꼴을 지키나. 아니면 list 로.
     """
 
-    config_type: str = ""
-    object_type: str = ""
-    __exclude_extract__: ClassVar[set[str]] = {"config_type", "object_type"}
+    skip: str | None = None
+    keys: str | None = None
+    values: str | None = None
+    keep_container: bool = False
+
+
+#: 저장용 - `Serialize`.
+SERIALIZE = Walk_rule(skip="__exclude_serialize__", keys="__custom_keys__", values="__custom_serializers__",
+                      keep_container=True)
+
+
+def Walk(value: Any, rule: Walk_rule) -> Any:
+    """값을 중첩 dict 로 - `Data_Schema` 는 칸마다, dict 는 값마다, list · tuple · set 은 원소마다 내려감.
+
+    규칙은 노드마다 그 노드 클래스의 규칙 상자 - 안쪽 노드는 안쪽 클래스의 것.
+    """
+    if isinstance(value, Data_Schema):
+        _cls = type(value)
+        _skip = _Rule_box(_cls, rule.skip, ())
+        _keys = _Rule_box(_cls, rule.keys, {})
+        _values = _Rule_box(_cls, rule.values, {})
+        _out: dict[str, Any] = {}
+        for _f in fields(value):
+            if _f.name in _skip:
+                continue
+            _value = getattr(value, _f.name)
+            _hook = _values.get(_f.name)
+            _out[_keys.get(_f.name, _f.name)] = _hook(_value) if _hook is not None else Walk(_value, rule)
+        return _out
+    if isinstance(value, dict):
+        return {_k: Walk(_v, rule) for _k, _v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        _items = [Walk(_v, rule) for _v in value]
+        return type(value)(_items) if rule.keep_container else _items
+    return value
+
+
+def _Rule_box(cls: type, name: str | None, empty: Any) -> Any:
+    """노드 클래스의 규칙 상자. 이름이 없거나 그 속성이 없으면 빈 것."""
+    return getattr(cls, name, empty) if name else empty
