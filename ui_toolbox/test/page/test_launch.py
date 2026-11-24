@@ -40,7 +40,7 @@ def test_main_launch_flow(tmp_path, monkeypatch):
         _main.launch(_pop)
 
     # step : run - every line of the launcher and the jobs in the log, ended jobs as progress, summary at the end
-    _main.launcher = Ui_Launcher.From_argv([_FILE])
+    _main.launcher = Ui_Launcher(_FILE)
     _main.launch(_pop)
     with pytest.raises(RuntimeError):
         _main.launch(_pop)
@@ -52,8 +52,14 @@ def test_main_launch_flow(tmp_path, monkeypatch):
     assert (_pop.bar.value(), _pop.bar.maximum()) == (2, 2), "run: ended jobs over meta jobs"
     assert _pop.state.text().startswith("끝 - 실패") and "1 / 2 ok" in _pop.state.text(), f"run: {_pop.state.text()}"
 
+    # step : run by name - only the named job, progress over the named jobs
+    _main.launch(_pop, names=["quick"])
+    _wait(lambda: not _pop.running)
+    assert (_pop.bar.value(), _pop.bar.maximum()) == (1, 1), "names: progress over the named jobs"
+    assert "job.broken" not in _pop.log.toPlainText() and "1 / 1 ok" in _pop.state.text(), "names: only the named job"
+
     # step : stop - the button asks the launcher, the waiting job ends by its own work with the stop code
-    _main.launcher = Ui_Launcher.From_argv([_FILE, "broken.object_type=wait"])
+    _main.launcher = Ui_Launcher(_FILE, ["broken.object_type=wait"])
     _main.launch(_pop)
     _wait(lambda: "job.broken - work started" in _pop.log.toPlainText())
     _pop._stop.click()
@@ -64,7 +70,7 @@ def test_main_launch_flow(tmp_path, monkeypatch):
     assert "1 / 2 ok" in _pop.state.text(), f"stop: stopped job is not ok {_pop.state.text()}"
 
     # step : a run that fails before launch - the reason in the log, ended as failed
-    _main.launcher = Ui_Launcher.From_argv([_FILE, "quick.object_type=nowhere"])
+    _main.launcher = Ui_Launcher(_FILE, ["quick.object_type=nowhere"])
     _main.launch(_pop)
     _wait(lambda: not _pop.running)
     assert "KeyError" in _pop.log.toPlainText() and _pop.state.text().startswith("끝 - 실패"), "not launched: failed"

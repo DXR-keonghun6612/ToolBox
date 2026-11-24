@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -79,10 +79,15 @@ class Main(QMainWindow):
         """창이 닫힐 때 부를 것 - 감시, 타이머, 프로세스 멈춤. 넣은 차례로 부름."""
         self._stops.append(stop)
 
-    def launch(self, popup: Progress_popup, lock: tuple[QWidget, ...] = ()) -> None:
-        """`launcher.Run` 을 작업 스레드에서 돌리고 popup 에 보임. 결과는 `end` - 모든 job 이 0 이면 성공.
+    def launch(self, popup: Progress_popup, lock: tuple[QWidget, ...] = (), names: Sequence[str] | None = None) -> None:
+        """`launcher.Run(names)` 을 작업 스레드에서 돌리고 popup 에 보임. 결과는 `end` - 모든 job 이 0 이면 성공.
 
-        popup 은 바탕 자리의 기록 파일을 따라 읽음, 전체는 meta 의 job 수. 멈춤 버튼은 `launcher.Stop`.
+        popup 은 바탕 자리의 기록 파일을 따라 읽음, 전체는 돌릴 job 수. 멈춤 버튼은 `launcher.Stop`.
+
+        Args:
+            popup: 진행 화면.
+            lock: 끝까지 잠글 위젯.
+            names: 돌릴 job 이름. 비면 meta 의 job 전부.
 
         Raises:
             RuntimeError: `launcher` 가 빔. popup 의 앞 진행이 안 끝남 - `Progress_popup.begin` 그대로.
@@ -91,11 +96,12 @@ class Main(QMainWindow):
         if self.launcher is None:
             raise RuntimeError(f"{type(self).__name__}.launcher is not set")
         _launcher = self.launcher
+        _names = list(_launcher.space.Get()) if names is None else list(names)
         if id(popup) not in self._launch_popups:
             popup.stop_requested.connect(self._stop_launcher)
             self._launch_popups.add(id(popup))
-        popup.begin(lock, log_file=_launcher.base_dir / LOG_DIR / EVENT_FILE, total=len(_launcher.space.Get()))
-        threading.Thread(target=_Run_launcher, args=(_launcher, popup), name="launcher-run", daemon=True).start()
+        popup.begin(lock, log_file=_launcher.base_dir / LOG_DIR / EVENT_FILE, total=len(_names))
+        threading.Thread(target=_Run_launcher, args=(_launcher, popup, _names), name="launcher-run", daemon=True).start()
 
     def _stop_launcher(self) -> None:
         if self.launcher is not None:
@@ -107,10 +113,10 @@ class Main(QMainWindow):
         super().closeEvent(event)
 
 
-def _Run_launcher(launcher: Launcher, popup: Progress_popup) -> None:
-    """작업 스레드 하나 - `Run` 의 결과로 popup 을 끝냄. 띄우기 전 실패(설정 짓기 등)는 그 사유를 로그 칸에."""
+def _Run_launcher(launcher: Launcher, popup: Progress_popup, names: list[str]) -> None:
+    """작업 스레드 하나 - `Run` 의 결과로 popup 을 끝냄. 띄우기 전 실패(설정 짓기, 없는 이름 등)는 그 사유를 로그 칸에."""
     try:
-        _results = launcher.Run()
+        _results = launcher.Run(names)
     except Exception as _e:  # noqa: BLE001 - 작업 스레드의 실패는 popup 의 끝으로 보임, 다시 던지면 아무도 못 받음
         popup.line(f"{type(_e).__name__}: {_e}")
         popup.end(False, "not launched")
