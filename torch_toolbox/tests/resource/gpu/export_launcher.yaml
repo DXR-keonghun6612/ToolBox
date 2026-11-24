@@ -1,0 +1,9 @@
+project_name: toy
+meta:
+  export:
+    config_type: export_job_Config
+    object_type: export
+    source: ""
+    export:
+      precision: FP16
+      opset_version: 17

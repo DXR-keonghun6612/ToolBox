@@ -6,7 +6,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from ..... import CFGS
+from python_toolbox.config import CONFIGS
 from .... import MODELS
 from ....definition import Composable_Config
 from ....model.definition import Trainable_Model
@@ -38,7 +38,7 @@ _FOURIER_DESCRIPTOR_NAME = "fourier_descriptor"
 _FOURIER_DESCRIPTOR_CFG  = f"{_FOURIER_DESCRIPTOR_NAME}_Config"
 
 
-@CFGS.Register_module(_FOURIER_DESCRIPTOR_CFG)
+@CONFIGS.Register_module(_FOURIER_DESCRIPTOR_CFG)
 @dataclass
 class Fourier_Descriptor_Config(Composable_Config):
     """Fourier 기술자 설정.

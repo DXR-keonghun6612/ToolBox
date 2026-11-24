@@ -1,0 +1,8 @@
+project_name: det
+meta:
+  export:
+    config_type: export_job_Config
+    object_type: export
+    source: ""
+    export:
+      precision: FP32

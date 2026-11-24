@@ -6,7 +6,7 @@ from torch import Tensor
 import torch.nn as nn
 from torch.utils.data import Dataset
 
-from python_toolbox.schema import Base_Config
+from python_toolbox.config import Base_Config
 
 from .. import Mode
 
@@ -16,7 +16,7 @@ class Dataset_Config(Base_Config):
     """데이터셋 Config.
 
     Attributes:
-        config_type: `CFGS` 조회 키.
+        config_type: `CONFIGS` 조회 키.
         object_type: `DATASETS` 조회 키.
         data_dir: 데이터셋 루트.
         name: 데이터셋 이름.
@@ -47,7 +47,7 @@ class Dataloader_Config(Base_Config):
         pin_memory: 핀 메모리.
         collate_fn: `DATALOADER_FN` 키. None 이면 기본 collate.
         pk_sampler: `PK_Batch_Sampler` 인자 (`P`, `K`, `num_batches`, `seed`). 단일 GPU TRAIN 에서만 적용.
-        dataset_meta: `Dataset_Config` raw dict. `Build_dataloader` 가 `CFGS` 로 인스턴스화.
+        dataset_meta: `Dataset_Config` raw dict. `Build_dataloader` 가 `CONFIGS` 로 인스턴스화.
     """
 
     __exclude_extract__: ClassVar[set[str]] = {"pk_sampler", "dataset_meta"}

@@ -6,7 +6,7 @@ import torch
 from torch import Tensor
 from torch.nn import ModuleDict
 
-from ... import CFGS
+from python_toolbox.config import CONFIGS
 from .. import LOSSES
 from ..definition import Composable_Config, Composable_Module
 
@@ -15,7 +15,7 @@ LOSS_NAME = "assemble_loss"
 CONFIG_NAME = f"{LOSS_NAME}_config"
 
 
-@CFGS.Register_module(CONFIG_NAME)
+@CONFIGS.Register_module(CONFIG_NAME)
 @dataclass
 class Assemble_Loss_Config(Composable_Config):
     """여러 Loss 의 가중합 Config.

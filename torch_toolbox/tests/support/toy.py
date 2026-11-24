@@ -1,6 +1,6 @@
-"""GPU 테스트가 함께 쓰는 합성 학습 - 데이터셋, 모델, job, runner 를 등록. DDP 자식이 다시 import 하므로 모듈로 둠.
+"""GPU 테스트가 함께 쓰는 합성 학습 - 데이터셋, 모델, job, launcher 를 등록. job 프로세스와 DDP 자식이 다시 import 하므로 모듈로 둠.
 
-데이터 : 특징 4 개, 클래스는 첫 특징의 구간 - 배울 수 있는 규칙. 설정 파일은 `tests/resource/gpu/`.
+데이터 : 특징 4 개, 클래스는 첫 특징의 구간 - 배울 수 있는 규칙. 설정 파일은 `tests/resource/gpu/` - launcher 설정 파일 둘(`LEARNING`, `EXPORT`).
 """
 from __future__ import annotations
 
@@ -12,33 +12,31 @@ import torch
 import torch.nn as nn
 
 import torch_toolbox.metric.component.scalar  # noqa: F401 - scalar_accumulator 등록
+from python_toolbox.config import CONFIGS
 from python_toolbox.registry import Registry
 from python_toolbox.run.job import Job
-from torch_toolbox import CFGS, Mode
+from python_toolbox.run.launcher import Launcher
+from torch_toolbox import Mode
 from torch_toolbox.dataloader import DATASETS
 from torch_toolbox.dataloader.definition import Custom_Dataset, Dataset_Config
 from torch_toolbox.modules import MODELS
 from torch_toolbox.modules.model.definition import Trainable_Model, Trainable_Model_Config
 from torch_toolbox.runner.config import Export_Config
 from torch_toolbox.runner.job import Export_Job
-from torch_toolbox.runner.runner import Torch_Runner
 from torch_toolbox.runner.supervised.assembler import Supervised_Assembler
-from torch_toolbox.runner.supervised.config import Supervised_Config
 from torch_toolbox.runner.supervised.job import Supervised_Learning_Job
 from torch_toolbox.runner.utils.weight import Iter_Selection, Max_of
 
 RES = Path(__file__).parents[1] / "resource" / "gpu"
+#: learning job 하나의 launcher 설정 파일.
+LEARNING = str(RES / "learning_launcher.yaml")
+#: export job 하나의 launcher 설정 파일 - `export.source` 는 argv 로.
+EXPORT = str(RES / "export_launcher.yaml")
 BEST = Iter_Selection(Max_of, "val", "accuracy")
 JOBS = Registry[type[Job]]("torch_toy_job", Job)
 
 
-def Base_argv() -> list[str]:
-    """설정 파일 넷 - hub 는 root, 나머지는 `model`, `loss`, `optim` 아래."""
-    return [str(RES / "hub.yaml"), f"{RES / 'model.yaml'}@model", f"{RES / 'loss.yaml'}@loss",
-            f"{RES / 'optim.yaml'}@optim"]
-
-
-@CFGS.Register_module("toy_dataset_Config")
+@CONFIGS.Register_module("toy_dataset_Config")
 @dataclass
 class Toy_Dataset_Config(Dataset_Config):
     config_type: str = "toy_dataset_Config"
@@ -64,7 +62,7 @@ class Toy_Dataset(Custom_Dataset):
                 {"input_profiles": [_profile], "output_profiles": []})
 
 
-@CFGS.Register_module("toy_model_Config")
+@CONFIGS.Register_module("toy_model_Config")
 @dataclass
 class Toy_Model_Config(Trainable_Model_Config):
     config_type: str = "toy_model_Config"
@@ -123,6 +121,5 @@ class Toy_Export(Export_Job):
         return model.eval(), tuple(_d.to(device) for _d in _dummy), "toy", _onnx_cfg, _rt_cfg
 
 
-class Toy_Runner(Torch_Runner):
-    config: Supervised_Config
+class Toy_Launcher(Launcher):
     JOB_REGISTRY = JOBS

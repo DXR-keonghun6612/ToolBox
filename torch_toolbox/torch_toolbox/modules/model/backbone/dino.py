@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import timm
 import torch.nn as nn
 
-from .... import CFGS
+from python_toolbox.config import CONFIGS
 from ... import MODELS
 from ..definition import Trainable_Model, Trainable_Model_Config
 
@@ -41,7 +41,7 @@ DinoVariantType = Literal[
 ]
 
 
-@CFGS.Register_module(CONFIG_NAME)
+@CONFIGS.Register_module(CONFIG_NAME)
 @dataclass
 class DINO_Config(Trainable_Model_Config):
     """DINO ViT 백본 Config.

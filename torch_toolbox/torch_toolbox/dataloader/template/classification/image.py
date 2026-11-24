@@ -10,7 +10,7 @@ from torch.export import Dim
 from torchvision import transforms
 from torchvision.io import read_image, ImageReadMode
 
-from .... import CFGS
+from python_toolbox.config import CONFIGS
 from ... import DATASETS
 from ...functional.image_net import Get_transform
 from ._base import Classification_Dataset, Classification_Dataset_Config
@@ -20,7 +20,7 @@ OBJECT_TYPE = "classification_image_dataset"
 CONFIG_NAME = f"{OBJECT_TYPE}_Config"
 
 
-@CFGS.Register_module(CONFIG_NAME)
+@CONFIGS.Register_module(CONFIG_NAME)
 @dataclass
 class Classification_Image_Dataset_Config(Classification_Dataset_Config):
     config_type: str = CONFIG_NAME

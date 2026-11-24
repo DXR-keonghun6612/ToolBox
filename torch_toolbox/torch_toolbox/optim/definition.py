@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Any
 from dataclasses import dataclass, field
 
-from python_toolbox.schema import Base_Config
+from python_toolbox.config import Base_Config
 
 
 @dataclass

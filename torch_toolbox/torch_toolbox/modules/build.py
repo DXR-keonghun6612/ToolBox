@@ -1,9 +1,9 @@
 from __future__ import annotations
-from typing import Any, cast
+from typing import Any
 
+from python_toolbox.config import CONFIGS
 from python_toolbox.registry import Registry
 
-from .. import CFGS
 from .definition import Composable_Config, Composable_Module, Module_Config_Template
 from .model.definition import Trainable_Model, Trainable_Model_Config
 from .model.backbone import BACKBONES, BACKBONE_CFGS
@@ -113,7 +113,7 @@ def Build_from_registry(
     if isinstance(config, Composable_Config):
         for _k, _meta in config.sub_module_meta.items():
             _meta = _Resolve_meta(_meta, _sub_kwargs, context)
-            _sub_cfg = cast(Composable_Config, CFGS.Get(_meta["config_type"])(**_meta))
+            _sub_cfg = CONFIGS.Get(_meta["config_type"], Module_Config_Template).From_dict(_meta)
             _sub_kwargs[_k] = Build_from_registry(_sub_cfg, registry, context)
 
     return registry.Get(config.object_type)(**config.Extract(), **_sub_kwargs)

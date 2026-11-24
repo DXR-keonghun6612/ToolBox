@@ -1,4 +1,7 @@
-"""가중치 파일 고르기 - 이어서 하기면 run 폴더의 체크포인트에서, 아니면 지정한 파일. 체크포인트 iteration 은 지정, 선택 규칙, 마지막 차례."""
+"""가중치 파일 고르기 - 이어서 하기면 run 폴더의 체크포인트에서, 아니면 지정한 파일. 체크포인트 iteration 은 지정, 선택 규칙, 마지막 차례.
+
+고른 기록은 부르는 쪽이 준 logger 로 - job 은 자기 logger 아래(`job.<이름>.weight`)를 넘김. 안 주면 이 모듈 logger.
+"""
 from __future__ import annotations
 
 import logging
@@ -37,8 +40,11 @@ class Iter_Selection:
     mode: str
     metric: str
 
-    def __call__(self, run_dir: Path) -> int:
+    def __call__(self, run_dir: Path, log: logging.Logger | None = None) -> int:
         """학습 기록에서 iteration 고름.
+
+        Args:
+            log: 고른 기록의 logger. 없으면 이 모듈 logger.
 
         Raises:
             FileNotFoundError: 그 mode 의 기록 폴더 없음.
@@ -46,7 +52,7 @@ class Iter_Selection:
         """
         _scores = Read_metric_log(run_dir, self.mode, self.metric)
         _pick = self.rule(_scores)
-        _log.info("checkpoint iter picked", extra={
+        (log or _log).info("checkpoint iter picked", extra={
             "iter": _pick, "rule": self.rule.__name__, "mode": self.mode, "metric": self.metric,
             "score": _scores[_pick], "candidates": len(_scores)})
         return _pick
@@ -89,22 +95,25 @@ def Resolve_weight_path(
     run_dir: Path,
     start_iter: int | None,
     selection: Iter_Selection | None = None,
+    log: logging.Logger | None = None,
 ) -> str | None:
     """가중치 파일 경로. 이어서 하기가 먼저, 다음 `weight_path`, 둘 다 없으면 None.
 
     Args:
-        is_resume: `run_dir` 이 이어서 하는 run 폴더 - `run_dir/checkpoints` 에서 찾음.
+        is_resume: `run_dir` 의 체크포인트에서 고름 - `run_dir/checkpoints`.
         weight_path: 가중치 파일 경로.
-        run_dir: job 결과 폴더.
+        run_dir: 체크포인트를 가진 run 폴더.
         start_iter: 지목할 iteration.
         selection: iteration 고르기.
+        log: 기록의 logger. 없으면 이 모듈 logger.
 
     Raises:
         FileNotFoundError: 가중치를 요구했으나 못 찾음.
     """
+    _logger = log or _log
     if is_resume:
         if weight_path is not None:
-            _log.warning("resume and weight_path both given - weight_path ignored", extra={"weight_path": weight_path})
+            _logger.warning("resume and weight_path both given - weight_path ignored", extra={"weight_path": weight_path})
 
         _ckpt_dir = run_dir / "checkpoints"
         if not _ckpt_dir.exists():
@@ -112,7 +121,7 @@ def Resolve_weight_path(
 
         _iter = start_iter
         if _iter is None and selection is not None:
-            _iter = selection(run_dir)
+            _iter = selection(run_dir, _logger)
 
         if _iter is not None:
             _target = _ckpt_dir / f"checkpoint_{_iter}.pt"

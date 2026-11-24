@@ -7,7 +7,7 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-from .... import CFGS
+from python_toolbox.config import CONFIGS
 from ... import MODELS
 from ...definition import Composable_Config
 from ...model.definition import Trainable_Model
@@ -31,7 +31,7 @@ _CH_NAME    = "image_channels"
 _CH_CFG     = f"{_CH_NAME}_Config"
 
 
-@CFGS.Register_module(_ALIGN_CFG)
+@CONFIGS.Register_module(_ALIGN_CFG)
 @dataclass
 class Align_Raster_Config(Composable_Config):
     """주축 정렬 설정.
@@ -128,7 +128,7 @@ class Align_Raster(Trainable_Model):
         return _v.view(_b, 1, _h, _w)
 
 
-@CFGS.Register_module(_CH_CFG)
+@CONFIGS.Register_module(_CH_CFG)
 @dataclass
 class Image_Channels_Config(Composable_Config):
     """CNN 입력 채널 구성.

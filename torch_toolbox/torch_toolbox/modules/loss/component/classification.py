@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
-from .... import CFGS
+from python_toolbox.config import CONFIGS
 from ... import LOSSES
 from ...definition import Module_Config_Template, Composable_Module
 
@@ -13,7 +13,7 @@ CE_LOSS_NAME = "cross_entropy"
 CE_CONFIG_NAME = f"{CE_LOSS_NAME}_Config"
 
 
-@CFGS.Register_module(CE_CONFIG_NAME)
+@CONFIGS.Register_module(CE_CONFIG_NAME)
 @dataclass
 class Cls_CrossEntropy_Config(Module_Config_Template):
     """분류 CrossEntropy Loss Config.

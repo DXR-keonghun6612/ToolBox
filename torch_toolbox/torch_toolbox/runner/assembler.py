@@ -22,7 +22,7 @@ class Component_Assembler(Generic[OPTIM, SCHEDULER, MODEL]):
     """컴포넌트 조립의 바탕. 하위는 `_Build` 에서 도메인 컴포넌트(model, loss, optim)를 더함.
 
     Attributes:
-        config: runner 가 지은 설정.
+        config: 학습 job 설정.
     """
 
     def __init__(self, config: Torch_Config) -> None:

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import torch
 from torch.nn import Module
 
-from python_toolbox.schema import Base_Config
+from python_toolbox.config import Base_Config
 
 
 @dataclass
@@ -14,7 +14,7 @@ class Module_Config_Template(Base_Config):
 
     Attributes:
         name: 모듈 식별자.
-        config_type: `CFGS` 조회 키.
+        config_type: `CONFIGS` 조회 키.
         object_type: 도메인 registry (`MODELS`, `LOSSES` 등) 조회 키.
         trainable: False 면 빌드 후 파라미터 grad 비활성화.
     """
@@ -31,7 +31,7 @@ class Composable_Config(Module_Config_Template):
 
     Attributes:
         sub_module_meta: 서브모듈 키 -> raw Config dict. `Extract()` 제외,
-            `Build_from_registry` 가 `CFGS` 로 인스턴스화.
+            `Build_from_registry` 가 `CONFIGS` 로 인스턴스화.
     """
 
     __exclude_extract__: ClassVar[set[str]] = {"sub_module_meta"}

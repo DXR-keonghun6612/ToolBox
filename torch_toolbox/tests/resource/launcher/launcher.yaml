@@ -1,0 +1,3 @@
+project_name: det
+meta:
+  learning: file@./learning.yaml

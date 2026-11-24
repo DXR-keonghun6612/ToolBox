@@ -6,7 +6,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from ..... import CFGS
+from python_toolbox.config import CONFIGS
 from .... import MODELS
 from ....definition import Composable_Config
 from ....model.definition import Trainable_Model
@@ -30,7 +30,7 @@ _PROFILE_STATS_NAME = "profile_stats"
 _PROFILE_STATS_CFG  = f"{_PROFILE_STATS_NAME}_Config"
 
 
-@CFGS.Register_module(_PROFILE_STATS_CFG)
+@CONFIGS.Register_module(_PROFILE_STATS_CFG)
 @dataclass
 class Profile_Stats_Config(Composable_Config):
     """주기 프로파일 통계 설정.
