@@ -3,11 +3,13 @@
 launcher 설정은 진입점마다 하나, meta 와 따로 - 클래스는 `config` annotation, `config_type` 없음. 사용처는 상속해 선언만.
 meta 는 launcher 설정의 `meta` 칸 - 맨 위 key 가 job 이름, 값이 job 설정. 안의 `file@` 는 launcher 설정 파일의 폴더 기준.
 job 설정의 클래스는 `config_type`(`CONFIGS`), job 클래스는 `object_type`(`JOB_REGISTRY`).
-`Run` 은 모든 job 설정과 job 클래스를 먼저 고른 뒤 띄움 - 하나라도 실패하면 아무것도 안 띄움. meta 가 바뀌면 다음 `Run` 에 반영.
+`Run` 은 고른 job(비면 meta 전부)의 설정과 job 클래스를 먼저 지은 뒤 띄움 - 하나라도 실패하면 아무것도 안 띄움. meta 가 바뀌면 다음 `Run` 에 반영.
 job 은 자기 프로세스에서 `(이름, 그 job 설정, base_dir)` 로 지어지고 돎 - job 은 launcher 를 모름.
 멈춤은 요청만(`Stop`) - job 마다의 pipe 로 보내고, job 프로세스가 받아 `job.stop()`. 끝내는 것은 job 의 `Work`.
 launcher 기록(`LAUNCHER_LOGGER`)은 둘만 - 띄움(이름, 시각), 결과(이름, 코드, hash, 내용). 세부는 job 기록.
 바탕 자리는 job 이 돌 자리 - 그 아래 자리는 job 이 정함. launcher 의 파일 기록은 그 아래 `LOG_DIR`. 설정 파일을 안 남김.
+진입 둘 - CLI 는 `Main(argv)`(argv 를 잘라 짓고 돌림, 종료 코드는 0 아닌 job 수), 코드는 생성자 + `Run(names)`.
+결과 없이 끝난 job 프로세스 - 신호로 끊겼으면 `KILLED`, 스스로 끝났으면 그 `exitcode`, 0 이면 `FAILED`.
 """
 from __future__ import annotations
 
@@ -23,7 +25,7 @@ from typing import Any, ClassVar, cast, get_type_hints
 from ..config import Config_Space
 from ..file import Read_from
 from ..registry import Registry
-from .job import FAILED, Job, Job_Config, Result
+from .job import FAILED, KILLED, Job, Job_Config, Result
 from .log import LOG_DIR, Attach, Begin_run, Default_log, Log_Config
 from .unit import Unit_Config
 
@@ -98,17 +100,24 @@ class Launcher:
         self._stops_lock = threading.Lock()
 
     @classmethod
-    def From_argv(cls, argv: Sequence[str]):
-        """argv 로 launcher 를 지음 - 첫 항목은 launcher 설정 파일, 나머지는 모두 meta 의 `경로=값`.
+    def Main(cls, argv: Sequence[str]) -> int:
+        """CLI 진입 - argv 를 잘라 launcher 를 짓고 고른 job 을 돌림. 첫 항목은 launcher 설정 파일, `=` 가 있으면 meta 의
+        `경로=값`, 없으면 돌릴 job 이름 - 이름이 없으면 meta 전부.
 
-        예 : `launcher.yaml train=file@./other.yaml train.max_iters=10`
+        예 : `launcher.yaml train broken train.max_iters=10`
+
+        Returns:
+            종료 코드 - 0 이 아닌 코드로 끝난 job 수, 255 에서 멈춤.
 
         Raises:
-            ValueError: argv 가 빔, `=` 없는 덮어쓰기.
+            ValueError: argv 가 빔. 그 밖은 생성자, `Run` 그대로.
         """
         if not argv:
             raise ValueError("no launcher config file in argv")
-        return cls(argv[0], argv[1:])
+        _overrides = [_a for _a in argv[1:] if "=" in _a]
+        _names = [_a for _a in argv[1:] if "=" not in _a]
+        _results = cls(argv[0], _overrides).Run(_names or None)
+        return min(255, sum(1 for _code, _, _ in _results.values() if _code != 0))
 
     def Make_base_dir(self) -> Path:
         """바탕 자리를 정하고 만듦. 이미 있으면 그대로 씀. 사용처가 override 해 자리를 바꿈 - 그 아래 `LOG_DIR` 은 `__init__` 이 만듦.
@@ -122,20 +131,25 @@ class Launcher:
         _dir.mkdir(parents=True, exist_ok=True)
         return _dir
 
-    def Run(self) -> dict[str, Result]:
-        """meta 의 job 마다 설정과 job 클래스를 고르고, 자기 기록 선언을 걸고, job 마다 프로세스를 띄움. 결과가 들어오는 대로 기록.
+    def Run(self, names: Sequence[str] | None = None) -> dict[str, Result]:
+        """고른 job 마다 설정과 job 클래스를 고르고, 자기 기록 선언을 걸고, job 마다 프로세스를 띄움. 결과가 들어오는 대로 기록.
 
-        결과 없이 끝난 job 프로세스는 그 프로세스의 `exitcode` 로 기록 - 신호로 끊겼으면 음수, 아니면 양수(`FAILED`).
+        결과 없이 끝난 job 프로세스 - 신호로 끊겼으면 `KILLED`(내용에 신호 번호), 스스로 끝났으면 그 `exitcode`, 0 이면 `FAILED`.
+
+        Args:
+            names: 돌릴 job 이름 - meta 의 맨 위 key. 비면 meta 의 job 전부.
 
         Returns:
             job 이름 -> `(코드, 설정 Hash(), 내용)`.
 
         Raises:
-            KeyError, ValueError, TypeError: job 설정 짓기, 등록 안 된 `object_type` - 띄우기 전에.
-            ValueError: 자기 기록 선언이 틀림 - `Attach` 그대로. 띄우기 전에.
+            KeyError: meta 에 없는 이름. 그 밖은 아래와 같음 - 모두 띄우기 전에.
+            KeyError, ValueError, TypeError: job 설정 짓기, 등록 안 된 `object_type`.
+            ValueError: 자기 기록 선언이 틀림 - `Attach` 그대로.
         """
         _registry = cast(Registry, self.JOB_REGISTRY)
-        _configs: dict[str, Job_Config] = {_name: self.space.Build(_name, Job_Config) for _name in self.space.Get()}
+        _names = list(self.space.Get()) if names is None else list(names)
+        _configs: dict[str, Job_Config] = {_name: self.space.Build(_name, Job_Config) for _name in _names}
         _classes: dict[str, type[Job]] = {_n: _registry.Get(_c.object_type, Job) for _n, _c in _configs.items()}
 
         Begin_run()
@@ -167,8 +181,8 @@ class Launcher:
                     _out = _conn.recv()
                 except EOFError:
                     _proc.join()
-                    _code = _proc.exitcode if _proc.exitcode else next(iter(FAILED))
-                    _out = {_name: (_code, _configs[_name].Hash(), "job process ended without a result")}
+                    _code, _content = _No_result(_proc.exitcode)
+                    _out = {_name: (_code, _configs[_name].Hash(), _content)}
                 _conn.close()
                 _proc.join()
                 with self._stops_lock:
@@ -204,9 +218,16 @@ def _Run_job(name: str, job_cls: type[Job], config: Job_Config, base_dir: Path, 
         threading.Thread(target=_Listen_stop, args=(stop, _job), name=f"stop-{name}", daemon=True).start()
         _out = _job.Run()
     except Exception as _e:  # noqa: BLE001 - 짓기 실패도 결과로 보냄, 다시 던지면 부모는 사유를 모름
-        _out = {name: (next(iter(FAILED)), config.Hash(), f"{type(_e).__name__}: {_e}")}
+        _out = {name: (FAILED, config.Hash(), f"{type(_e).__name__}: {_e}")}
     conn.send(_out)
     conn.close()
+
+
+def _No_result(exitcode: int | None) -> tuple[int, str]:
+    """결과 없이 끝난 job 프로세스의 `(코드, 내용)`. `exitcode` 의 음수는 Python 이 붙인 신호 표시(-N)."""
+    if exitcode is not None and exitcode < 0:
+        return KILLED, f"job process killed by signal {-exitcode}"
+    return (exitcode or FAILED), "job process ended without a result"
 
 
 def _Listen_stop(stop: Connection, job: Job) -> None:

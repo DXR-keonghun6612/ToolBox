@@ -4,7 +4,7 @@
 키마다 반복, 워커 풀 같은 실행 방식은 안 가짐 - 사용처가 `Job` 위에 얹음.
 멈춤은 요청만(`stop`) - `Work` 가 `stopped` 를 보고 끝냄.
 job 은 자기 이름과 자기 설정(`Job_Config`)만 받음 - launcher 설정의 모양을 모름. 자기 기록 선언(`config.log`)은 `Run` 이 검.
-`Run` 의 결과는 `{이름: (코드, 설정 Hash(), 내용)}` - 코드 0 정상 종료, 양수 실패, 음수 멈춤. 코드와 내용은 `Outcome` 이 정함.
+`Run` 의 결과는 `{이름: (코드, 설정 Hash(), 내용)}` - 코드 0 정상 종료, 1 이상은 `CODES` 의 뜻. 코드와 내용은 `Outcome` 이 정함.
 job 결과 폴더는 `Make_run_dir` - 새로면 자기 설정을 남기고, 이어서면 남은 설정과 정체성을 비교(`Check_saved`).
 """
 from __future__ import annotations
@@ -26,10 +26,14 @@ from .unit import Diff, Unit_Config
 CONFIG_FILE = "config.yaml"
 #: 정상 종료 코드.
 OK = 0
-#: 실패 코드 -> 이름. 양수. 1 은 구분 없는 실패 - 사용처가 2 부터 더함.
-FAILED: dict[int, str] = {1: "Failed"}
-#: 멈춤 코드 -> 이름. 음수 - 프로세스가 신호로 끊긴 `exitcode`(-N) 와 같은 쪽. 사용처가 -2 부터 더함.
-STOPPED: dict[int, str] = {-1: "Stopped"}
+#: 구분 없는 실패 - `Work` 의 예외, ERROR 기록, 결과 없이 끝난 job 프로세스.
+FAILED = 1
+#: 멈춤 요청으로 끝남.
+STOPPED = 2
+#: job 프로세스가 신호로 끊김 - launcher 가 남김.
+KILLED = 3
+#: 결과 코드 -> 이름. 0 밖은 1 이상 - 사용처 job 이 4 부터 더해 `Outcome` 에서 씀.
+CODES: dict[int, str] = {FAILED: "Failed", STOPPED: "Stopped", KILLED: "Killed"}
 #: job 결과 하나 - `(코드, 설정 Hash(), 내용)`.
 Result = tuple[int, str, str]
 
@@ -131,16 +135,16 @@ class Job:
     def Outcome(self, errors: int) -> tuple[int, str]:
         """이번 실행의 `(코드, 내용)`. 사용처가 override 해 코드와 내용을 자기 것으로 선언.
 
-        코드 0 정상 종료, 양수 실패(`FAILED`), 음수 멈춤(`STOPPED`).
-        기본 : 멈춤 요청이 있으면 -1 - 멈춤 중 오류도 멈춤으로, ERROR 기록이 있으면 1, 둘 다 없으면 `(OK, "Done")`.
+        코드 0 정상 종료, 1 이상은 `CODES` 의 뜻.
+        기본 : 멈춤 요청이 있으면 `STOPPED` - 멈춤 중 오류도 멈춤으로, ERROR 기록이 있으면 `FAILED`, 둘 다 없으면 `(OK, "Done")`.
 
         Args:
             errors: 이번 실행의 ERROR 기록 수.
         """
         if self.stopped:
-            return -1, STOPPED[-1]
+            return STOPPED, CODES[STOPPED]
         if errors:
-            return 1, f"{FAILED[1]} - {errors} error records"
+            return FAILED, f"{CODES[FAILED]} - {errors} error records"
         return OK, "Done"
 
     def Run(self) -> dict[str, Result]:
