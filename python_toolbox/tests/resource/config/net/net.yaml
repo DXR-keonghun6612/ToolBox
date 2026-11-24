@@ -1,0 +1,10 @@
+config_type: test_net_Config
+backbone:
+  width: ${model.patch}
+heads:
+  - width: 8
+  - config@test_wide_head_Config
+  - null
+bag:
+  one: file@./head.yaml
+spare: null

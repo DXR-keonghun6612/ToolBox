@@ -1,0 +1,11 @@
+project_name: det
+log:
+  level: DEBUG
+  output:
+    - format: json
+      to: events.jsonl
+meta:
+  train: file@./train.yaml
+  broken:
+    config_type: test_train_job
+    object_type: fail
