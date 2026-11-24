@@ -1,0 +1,4 @@
+config_type: test_train_job
+object_type: train
+max_iters: 100
+model: file@./model.yaml
