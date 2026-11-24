@@ -7,55 +7,35 @@
 계층 셋 - `schema`, `file`, `registry` <- `config` <- `run/`. 같은 계층은 서로 모름. `run/` 안은 log <- unit <- job <- launcher.
 
 ```mermaid
-classDiagram
-    direction LR
-    namespace python_toolbox {
-        class Data_Schema
-        class Base_Config {
-            config_type
-            From_dict()
-        }
-        class Registry
-        class Config_Space {
-            Build()
-        }
-    }
-    namespace file {
-        class file_io {
-            <<module>>
-        }
-    }
-    namespace run {
-        class Unit_Config
-        class Log_Config
-        class Launcher_Config {
-            meta
-        }
-        class Job_Config
-        class Launcher {
-            Run()
-        }
-        class Job {
-            Work()
-        }
-    }
-
-    Data_Schema <|-- Base_Config
-    Base_Config <|-- Unit_Config
-    Base_Config <|-- Log_Config
-    Unit_Config <|-- Launcher_Config
-    Unit_Config <|-- Job_Config
-
-    Unit_Config *-- Log_Config : log
-    Launcher *-- Launcher_Config : config
-    Launcher *-- Config_Space : space - meta
-    Job *-- Job_Config : config
-
-    Base_Config ..> Registry : CONFIGS
-    Config_Space ..> Base_Config : Build - From_dict
-    Config_Space ..> file_io : 설정 파일
-    Launcher o-- Registry : JOB_REGISTRY
-    Launcher ..> Job : 프로세스로 띄움
+graph RL
+    subgraph python_toolbox
+        schema["<b>schema.py</b><br/>Data_Schema"]
+        registry["<b>registry.py</b><br/>Registry"]
+        config["<b>config.py</b><br/>Base_Config, CONFIGS, Config_Space"]
+    end
+    subgraph file_pkg [file/]
+        file["<b>__init__.py</b><br/>Read_from, Write_to"]
+    end
+    subgraph run
+        log["<b>log.py</b><br/>Log_Config, Attach"]
+        unit["<b>unit.py</b><br/>Unit_Config, Diff"]
+        job["<b>job.py</b><br/>Job + Config"]
+        launcher["<b>launcher.py</b><br/>Launcher + Config"]
+    end
+    config -->|Data_Schema 상속| schema
+    config -->|CONFIGS| registry
+    config -->|설정 파일| file
+    log -->|Config 구조 상속| config
+    unit -->|Config 구조 상속| config
+    unit -->|log| log
+    job -->|Config 구조 상속| unit
+    job -->|자기 기록 선언| log
+    launcher -->|Config 구조 상속| unit
+    launcher -->|space - meta| config
+    launcher -->|JOB_REGISTRY| registry
+    launcher -->|launcher 설정 파일| file
+    launcher -->|프로세스로 띄움| job
+    launcher -->|자기 기록 선언| log
 ```
 
 - 설정의 목표 - 파일, argv 로 meta 를 만들고 참조로 다른 값을 가져와, 필요한 설정 하나를 지음. hydra 와 비슷한 기능
