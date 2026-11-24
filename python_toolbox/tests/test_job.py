@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from python_toolbox.run.job import CONFIG_FILE, OK, Job, Job_Config
+from python_toolbox.run.job import CONFIG_FILE, FAILED, OK, STOPPED, Job, Job_Config
 from python_toolbox.run.log import LOG_DIR, Attach, Detach, Log_Config, Log_Output
 
 
@@ -50,19 +50,19 @@ def test_job_flow(tmp_path, caplog):
     assert _summary.name == "job.quiet" and _summary.code == OK and _summary.errors == 0, "ok: summary fields"
     assert any(_r.getMessage() == "work started" and _r.started for _r in caplog.records), "ok: start time recorded"
 
-    # step : an error record fails with a positive code - also from a child logger with its own declaration
-    assert _Reports_error("err", _config, tmp_path).Run()["err"][0] == 1, "error record: positive code"
+    # step : an error record fails with the failed code - also from a child logger with its own declaration
+    assert _Reports_error("err", _config, tmp_path).Run()["err"][0] == FAILED, "error record: failed code"
     Attach("job.err2.loader", Log_Config(output=[Log_Output(format="text", to="loader.log")]), tmp_path)
-    assert _Reports_error("err2", _config, tmp_path).Run()["err2"][0] == 1, "error record: declared child counted"
+    assert _Reports_error("err2", _config, tmp_path).Run()["err2"][0] == FAILED, "error record: declared child counted"
     Detach("job.err2.loader")
 
     # step : an exception is logged, not raised, and fails
-    assert _Raises("raise", _config, tmp_path).Run()["raise"][0] == 1, "exception: positive code"
+    assert _Raises("raise", _config, tmp_path).Run()["raise"][0] == FAILED, "exception: failed code"
     assert any(_r.exc_info and _r.levelno == logging.ERROR for _r in caplog.records), "exception: logged with trace"
 
-    # step : a stop request ends with a negative code
+    # step : a stop request ends with the stopped code
     _code, _, _content = _Stops("stop", _config, tmp_path).Run()["stop"]
-    assert _code < 0 and _content == "Stopped", "stop: negative code"
+    assert _code == STOPPED and _content == "Stopped", "stop: stopped code"
 
     # step : own declaration - records go to its own file under the log dir, detached after the run
     _logged = _Train_Config(log=Log_Config(output=[Log_Output(format="json", to="quiet.jsonl")]))
