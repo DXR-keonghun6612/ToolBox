@@ -21,6 +21,7 @@ import pytest
 import torch
 
 from python_toolbox.run import launcher as launcher_module
+from python_toolbox.run.job import FAILED
 from python_toolbox.run.launcher import LAUNCHER_LOGGER
 from python_toolbox.run.log import LOG_DIR, Detach
 from support.toy import BEST, EXPORT, LEARNING, Toy_Launcher
@@ -43,7 +44,7 @@ def test_gpu_launcher_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher_module, "BASE_ROOT", str(tmp_path))
 
     # step : learning - iterations, checkpoints and metric json in the run dir, metric records in the log dir
-    _first = Toy_Launcher.From_argv([LEARNING])
+    _first = Toy_Launcher(LEARNING)
     _base = _first.base_dir
     assert _first.space.Get("learning.mode.train.loader.dataset_meta.data_kwargs.classes") == 3, \
         "learning: model value into the dataset through reference"
@@ -58,7 +59,7 @@ def test_gpu_launcher_flow(tmp_path, monkeypatch):
 
     # step : resume learning - continues from the last checkpoint up to the new max
     _resume = f"learning.resume={_dir}"
-    _more = Toy_Launcher.From_argv([LEARNING, _resume, "learning.max_iters=5"])
+    _more = Toy_Launcher(LEARNING, [_resume, "learning.max_iters=5"])
     assert _more.Run()["learning"][0] == 0 and (_dir / "checkpoints" / "checkpoint_4.pt").is_file(), \
         "resume: continued to the new max"
     _iters = [_e["iter"] for _e in _Events(_base) if _e["name"] == "job.learning.metric"]
@@ -66,13 +67,13 @@ def test_gpu_launcher_flow(tmp_path, monkeypatch):
 
     # step : test - one pass on the test mode with the best val checkpoint
     _best = BEST(_dir)
-    _test = Toy_Launcher.From_argv([LEARNING, _resume, "learning.test=true"])
+    _test = Toy_Launcher(LEARNING, [_resume, "learning.test=true"])
     assert _test.Run()["learning"][0] == 0, "test: finished"
     assert (_dir / "avg" / "test" / "scalar" / f"iter_{_best}.json").is_file(), "test: metric of the picked iteration"
 
     # step : export - onnx and runtime config in the export's own run dir, read from the finished run, the onnx runs
     _before = set(_base.iterdir())
-    _export = Toy_Launcher.From_argv([EXPORT, f"export.source={_dir}"])
+    _export = Toy_Launcher(EXPORT, [f"export.source={_dir}"])
     assert _export.Run()["export"][0] == 0, "export: finished"
     _out_dir = _New_run_dir(_base, _before)
     assert (_out_dir / "toy.onnx").is_file() and (_out_dir / "toy_rt_cfg.yaml").is_file(), \
@@ -83,14 +84,14 @@ def test_gpu_launcher_flow(tmp_path, monkeypatch):
 
     # step : early stop - one iteration, still a success
     _before = set(_base.iterdir())
-    _early = Toy_Launcher.From_argv([LEARNING, "learning.object_type=early"])
+    _early = Toy_Launcher(LEARNING, ["learning.object_type=early"])
     assert _early.Run()["learning"][0] == 0, "early: stop is not a failure"
     assert sorted(_p.name for _p in (_New_run_dir(_base, _before) / "checkpoints").iterdir()) == \
         ["checkpoint_0.pt"], "early: stopped after the first iteration"
 
     # step : broken forward - logged with a trace, job fails
-    _broken = Toy_Launcher.From_argv([LEARNING, "learning.object_type=broken"])
-    assert _broken.Run()["learning"][0] == 1, "broken: job failed"
+    _broken = Toy_Launcher(LEARNING, ["learning.object_type=broken"])
+    assert _broken.Run()["learning"][0] == FAILED, "broken: job failed"
     _errors = [_e for _e in _Events(_base) if _e["level"] == "ERROR" and "exc" in _e]
     assert _errors and "forward broke" in _errors[-1]["exc"], "broken: error record with the trace"
 

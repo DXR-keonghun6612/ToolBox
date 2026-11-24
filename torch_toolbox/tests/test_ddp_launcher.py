@@ -14,6 +14,7 @@ import pytest
 import torch
 
 from python_toolbox.run import launcher as launcher_module
+from python_toolbox.run.job import FAILED
 from python_toolbox.run.launcher import LAUNCHER_LOGGER
 from python_toolbox.run.log import LOG_DIR, Detach
 from support.toy import LEARNING, Toy_Launcher
@@ -46,7 +47,7 @@ def test_ddp_launcher_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher_module, "BASE_ROOT", str(tmp_path))
 
     # step : learning on two processes - rank 0 saves checkpoints into the parent's run dir and writes the records
-    _first = Toy_Launcher.From_argv([LEARNING, *_Ddp()])
+    _first = Toy_Launcher(LEARNING, _Ddp())
     _base = _first.base_dir
     assert _first.Run()["learning"][0] == 0, "ddp learning: finished"
     _dir = _New_run_dir(_base, set())
@@ -58,19 +59,19 @@ def test_ddp_launcher_flow(tmp_path, monkeypatch):
     assert any(_e.get("rank") == 0 for _e in _events), "ddp learning: rank 0 child records reach the log"
 
     # step : resume on two processes
-    _more = Toy_Launcher.From_argv([LEARNING, *_Ddp(), f"learning.resume={_dir}", "learning.max_iters=4"])
+    _more = Toy_Launcher(LEARNING, [*_Ddp(), f"learning.resume={_dir}", "learning.max_iters=4"])
     assert _more.Run()["learning"][0] == 0 and (_dir / "checkpoints" / "checkpoint_3.pt").is_file(), \
         "ddp resume: continued"
 
     # step : early stop decided by rank 0 and broadcast - every process stops after one iteration
     _before = set(_base.iterdir())
-    _early = Toy_Launcher.From_argv([LEARNING, *_Ddp(), "learning.object_type=early"])
+    _early = Toy_Launcher(LEARNING, [*_Ddp(), "learning.object_type=early"])
     assert _early.Run()["learning"][0] == 0, "ddp early: stop is not a failure"
     assert sorted(_p.name for _p in (_New_run_dir(_base, _before) / "checkpoints").iterdir()) == \
         ["checkpoint_0.pt"], "ddp early: stopped after the first iteration"
 
     # step : a child process fails - the exception reaches the parent, job fails
-    _broken = Toy_Launcher.From_argv([LEARNING, *_Ddp(), "learning.object_type=broken"])
-    assert _broken.Run()["learning"][0] == 1, "ddp broken: job failed"
+    _broken = Toy_Launcher(LEARNING, [*_Ddp(), "learning.object_type=broken"])
+    assert _broken.Run()["learning"][0] == FAILED, "ddp broken: job failed"
 
     Detach(LAUNCHER_LOGGER)

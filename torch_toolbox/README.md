@@ -44,5 +44,5 @@ graph RL
 | 대상 | 담는 것 | 추가 의존 |
 | --- | --- | --- |
 | 설치 | `pip install -e .` | python >= 3.11, `python_toolbox` (git, HUB 브랜치), `pyproject.toml` 의 torch, timm, onnx 계열 |
-| 실행 | 사용처의 `Launcher` 하위 클래스 `.From_argv(argv).Run()` - argv 는 launcher 설정 파일과 meta 덮어쓰기(`job.a.b=값`) | CUDA GPU. 2개 이상이면 DDP (nccl) |
+| 실행 | 사용처의 `Launcher` 하위 클래스 `.Main(argv)` - argv 는 launcher 설정 파일, meta 덮어쓰기(`job.a.b=값`), 돌릴 job 이름 | CUDA GPU. 2개 이상이면 DDP (nccl) |
 | 테스트 | `pytest` - GPU 없이 설정 조립, job 선택, 이어서 하기, 가중치 고르기 | - |

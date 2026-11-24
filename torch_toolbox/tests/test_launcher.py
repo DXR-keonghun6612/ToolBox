@@ -55,7 +55,7 @@ def test_torch_job_config_flow(tmp_path, monkeypatch):
     _export_file = str(_RES / "export.yaml")
 
     # step : build - job config picked by config_type from the meta, sub-configs by field, reference inside the job
-    _space = _Launcher.From_argv([_file]).space
+    _space = _Launcher(_file).space
     _cfg = _space.Build("learning", Supervised_Config)
     assert type(_cfg) is Supervised_Config and _JOBS.Get(_cfg.object_type, Job) is _Learning, "build: learning job"
     assert type(_cfg.model) is ResNet_Config and _cfg.model.variant == "resnet18", "build: model file@ by config_type"
@@ -63,17 +63,17 @@ def test_torch_job_config_flow(tmp_path, monkeypatch):
         "build: mode loader config, reference followed"
     assert _cfg.gpus == [0], "build: default gpu"
     with pytest.raises(ValueError):
-        _Launcher.From_argv([_file, "learning.gpus=[]"]).space.Build("learning", Supervised_Config)
+        _Launcher(_file, ["learning.gpus=[]"]).space.Build("learning", Supervised_Config)
 
     # step : export job config - its own config type, a finished run as source, options checked
-    _ecfg = _Launcher.From_argv([_export_file, "export.source=/somewhere", "export.export.precision=FP16"]) \
+    _ecfg = _Launcher(_export_file, ["export.source=/somewhere", "export.export.precision=FP16"]) \
         .space.Build("export", Export_Job_Config)
     assert type(_ecfg) is Export_Job_Config and _ecfg.export.precision == "FP16", "export: config and precision"
     assert _JOBS.Get(_ecfg.object_type, Job) is _Export, "export: job class"
     with pytest.raises(ValueError):
-        _Launcher.From_argv([_export_file]).space.Build("export", Export_Job_Config)
+        _Launcher(_export_file).space.Build("export", Export_Job_Config)
     with pytest.raises(ValueError):
-        _Launcher.From_argv([_export_file, "export.source=/x", "export.export.precision=FP64"]) \
+        _Launcher(_export_file, ["export.source=/x", "export.export.precision=FP64"]) \
             .space.Build("export", Export_Job_Config)
 
     # step : identity - run values do not move the hash, results-making values do
