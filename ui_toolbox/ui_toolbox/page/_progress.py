@@ -2,14 +2,20 @@
 
 공개 메서드는 어느 스레드에서 불러도 됨 - 안에서 신호를 내고, 화면은 popup 이 사는 GUI 스레드에서 바뀜.
 멈춤 버튼은 `stop_requested` 신호만 - 무엇을 멈출지는 잇는 쪽.
+`begin` 에 기록 파일을 주면 따라 읽음 - python_toolbox 기록의 JSON 줄(`EVENT_FILE`)마다 로그 칸 한 줄,
+launcher 의 `job ended` 줄 수 / `total` 이 진행. 읽기는 `begin` 때의 파일 끝부터, `end` 때 남은 줄까지.
 """
 
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
+from python_toolbox.run.launcher import LAUNCHER_LOGGER
 
 from .. import component
 from ._popup import Popup
@@ -29,6 +35,8 @@ class Progress_popup(Popup):
 
     #: 상태 줄을 고치는 간격(ms).
     TICK_MS = 1000
+    #: 기록 파일을 다시 읽는 간격(ms).
+    FOLLOW_MS = 200
 
     stop_requested = Signal()
     _begun = Signal(object)
@@ -64,6 +72,12 @@ class Progress_popup(Popup):
         self._tick = QTimer(self)
         self._tick.setInterval(self.TICK_MS)
         self._tick.timeout.connect(self._show_state)
+        self._follow = QTimer(self)
+        self._follow.setInterval(self.FOLLOW_MS)
+        self._follow.timeout.connect(self._read_log)
+        self._log_file: Path | None = None
+        self._offset = 0
+        self._ended_jobs = 0
         self._begun.connect(self._on_begin)
         self._reported.connect(self._on_report)
         self._lined.connect(self._on_line)
@@ -82,8 +96,13 @@ class Progress_popup(Popup):
         """`begin` 뒤 아직 `end` 가 안 옴."""
         return self._running
 
-    def begin(self, lock: tuple[QWidget, ...] = ()) -> None:
+    def begin(self, lock: tuple[QWidget, ...] = (), log_file: str | Path | None = None, total: int = 0) -> None:
         """띄우고 시작. 로그와 진행을 비우고, `lock` 은 `end` 까지 잠금.
+
+        Args:
+            lock: `end` 까지 잠글 위젯.
+            log_file: 따라 읽을 기록 파일(`EVENT_FILE`). 비면 받은 `line`, `report` 만 보임.
+            total: 진행의 전체 - launcher 의 job 수. `log_file` 이 있을 때.
 
         Raises:
             RuntimeError: 앞의 진행이 아직 안 끝남.
@@ -91,7 +110,9 @@ class Progress_popup(Popup):
         if self._running:
             raise RuntimeError("progress already running in this popup")
         self._running = True
-        self._begun.emit(tuple(lock))
+        _file = Path(log_file) if log_file is not None else None
+        _offset = _file.stat().st_size if _file is not None and _file.is_file() else 0
+        self._begun.emit((tuple(lock), _file, _offset, total))
 
     def report(self, done: int, total: int, text: str = "") -> None:
         """진행. `total <= 0` 은 전체를 모름. `text` 가 있으면 상태 줄의 마지막 줄로."""
@@ -106,19 +127,23 @@ class Progress_popup(Popup):
         self._ended.emit(ok, summary)
 
     # ── GUI 스레드 ────────────────────────────────────────────────────────────
-    def _on_begin(self, lock: tuple[QWidget, ...]) -> None:
+    def _on_begin(self, begun: tuple[tuple[QWidget, ...], Path | None, int, int]) -> None:
+        lock, self._log_file, self._offset, _total = begun
         self.log.clear()
         self._last = ""
-        self._done = self._total = 0
+        self._done, self._total = 0, _total
+        self._ended_jobs = 0
         self._locked = lock
         for _w in self._locked:
             _w.setEnabled(False)
         self._stop.setEnabled(True)
         self._close.setEnabled(False)
         self._started = time.monotonic()
-        self.bar.report(0, 0, "시작")
+        self.bar.report(0, self._total, "시작")
         self.show()
         self._tick.start()
+        if self._log_file is not None:
+            self._follow.start()
         self._show_state()
 
     def _on_report(self, done: int, total: int, text: str) -> None:
@@ -132,6 +157,10 @@ class Progress_popup(Popup):
         self._last = text
 
     def _on_end(self, ok: bool, summary: str) -> None:
+        if self._log_file is not None:
+            self._follow.stop()
+            self._read_log()
+            self._log_file = None
         self._tick.stop()
         for _w in self._locked:
             _w.setEnabled(True)
@@ -143,6 +172,25 @@ class Progress_popup(Popup):
         self._stop.setEnabled(False)
         self._close.setEnabled(True)
         self._running = False
+
+    def _read_log(self) -> None:
+        """기록 파일의 새 줄을 로그 칸으로, launcher 의 `job ended` 를 진행으로. 다 쓰인 줄까지만 - 나머지는 다음 번에."""
+        if self._log_file is None or not self._log_file.is_file():
+            return
+        with self._log_file.open("rb") as _f:
+            _f.seek(self._offset)
+            _chunk = _f.read()
+        _cut = _chunk.rfind(b"\n") + 1
+        self._offset += _cut
+        for _raw in _chunk[:_cut].decode("utf-8").splitlines():
+            self._on_record(json.loads(_raw))
+
+    def _on_record(self, record: dict[str, Any]) -> None:
+        self._on_line(f"{record.get('time', '')} {record.get('level', '')} {record.get('name', '')} - "
+                      f"{record.get('message', '')}")
+        if record.get("name") == LAUNCHER_LOGGER and record.get("message") == "job ended":
+            self._ended_jobs += 1
+            self._on_report(self._ended_jobs, self._total, f"{record.get('job', '')} ended")
 
     # ── 안 ────────────────────────────────────────────────────────────────────
     def _progress_text(self) -> str:
