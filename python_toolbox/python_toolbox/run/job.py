@@ -1,6 +1,7 @@
 """작업의 바탕 - `(name, config, base_dir)` 로 지어지고, `Work` 를 돌리고, 실패는 그 작업 logger 의 ERROR 기록으로 셈.
 
 진행, 결과, 실패는 모두 logging 으로 남김 - 따로 event 없음. 어느 프로세스에서 돌릴지는 부르는 쪽 몫.
+키마다 반복, 워커 풀 같은 실행 방식은 안 가짐 - 사용처가 `Job` 위에 얹음.
 멈춤은 요청만(`stop`) - `Work` 가 `stopped` 를 보고 끝냄.
 job 은 자기 이름과 자기 설정(`Job_Config`)만 받음 - launcher 설정의 모양을 모름. 자기 기록 선언(`config.log`)은 `Run` 이 검.
 `Run` 의 결과는 `{이름: (코드, 설정 Hash(), 내용)}` - 코드 0 정상 종료, 양수 실패, 음수 멈춤. 코드와 내용은 `Outcome` 이 정함.

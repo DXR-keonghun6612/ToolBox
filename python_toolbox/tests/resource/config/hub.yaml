@@ -1,6 +1,11 @@
-shared:
-  patch: 32
+data:
+  config_type: test_data_Config
   name: det
-run:
-  max_iters: 100
-  tag: ${shared.name}_v1
+  patch: ${model.patch}
+  sizes:
+    - ${model.patch}
+    - ${model.depth}
+    - null
+  tag: ${data.name}_v1
+model: file@./model.yaml
+net: file@./net/net.yaml

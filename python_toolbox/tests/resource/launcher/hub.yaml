@@ -1,9 +1,0 @@
-project_name: det
-jobs:
-  train:
-    object_type: train
-    max_iters: 100
-  broken:
-    object_type: fail
-shared:
-  patch: 32
