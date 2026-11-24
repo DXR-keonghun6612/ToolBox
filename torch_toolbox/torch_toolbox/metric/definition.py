@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 from dataclasses import dataclass, field
 
-from python_toolbox.schema import Base_Config
+from python_toolbox.config import Base_Config
 
 
 @dataclass
@@ -11,7 +11,7 @@ class Accumulator_Config(Base_Config):
     """Accumulator 하나의 Config.
 
     Attributes:
-        config_type: `CFGS` 조회 키.
+        config_type: `CONFIGS` 조회 키.
         object_type: `ACCUMULATORS` 조회 키.
         acc_kwargs: Accumulator 생성자 인자. `Extract()` 에서 언패킹.
     """

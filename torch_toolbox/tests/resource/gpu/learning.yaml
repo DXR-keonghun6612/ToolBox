@@ -1,10 +1,15 @@
-project_name: toy
-job:
-  object_type: learning
+config_type: supervised_Config
+object_type: learning
 max_iters: 3
 save_interval: 1
-shared:
-  classes: 3
+log:
+  level: INFO
+  output:
+    - format: json
+      to: events.jsonl
+model: file@./model.yaml
+loss: file@./loss.yaml
+optim: file@./optim.yaml
 mode:
   train:
     use_grad: true
@@ -12,7 +17,7 @@ mode:
       batch_size: 8
       dataset_meta:
         config_type: toy_dataset_Config
-        data_kwargs: {size: 64, classes: "${shared.classes}", seed: 0}
+        data_kwargs: {size: 64, classes: "${learning.model.classes}", seed: 0}
     metric:
       scalar: {object_type: scalar_accumulator}
   val:
@@ -21,7 +26,7 @@ mode:
       shuffle: false
       dataset_meta:
         config_type: toy_dataset_Config
-        data_kwargs: {size: 32, classes: "${shared.classes}", seed: 1}
+        data_kwargs: {size: 32, classes: "${learning.model.classes}", seed: 1}
     metric:
       scalar: {object_type: scalar_accumulator}
   test:
@@ -30,6 +35,6 @@ mode:
       shuffle: false
       dataset_meta:
         config_type: toy_dataset_Config
-        data_kwargs: {size: 32, classes: "${shared.classes}", seed: 2}
+        data_kwargs: {size: 32, classes: "${learning.model.classes}", seed: 2}
     metric:
       scalar: {object_type: scalar_accumulator}

@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import cast
 
 from torch.utils.data import DataLoader, DistributedSampler
 
-from .. import CFGS, Mode
+from python_toolbox.config import CONFIGS
+
+from .. import Mode
 from . import DATASETS, DATALOADER_FN
 from .definition import Custom_Dataset, Dataset_Config, Dataloader_Config
 from .functional import PK_Batch_Sampler
@@ -52,7 +53,7 @@ def Build_dataloader(
         (dataset, DataLoader).
     """
     _meta = dataloader_cfg.dataset_meta
-    _ds_cfg = cast(Dataset_Config, CFGS.Get(_meta["config_type"])(**_meta))
+    _ds_cfg = CONFIGS.Get(_meta["config_type"], Dataset_Config).From_dict(_meta)
     _dataset = Build_dataset(_ds_cfg, mode)
 
     _collate_fn = _Get_collate_func(dataloader_cfg.collate_fn)

@@ -1,0 +1,3 @@
+project_name: toy
+meta:
+  learning: file@./learning.yaml

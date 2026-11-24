@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Literal
 from dataclasses import dataclass, field
 
-from .... import CFGS
+from python_toolbox.config import CONFIGS
 from ... import MODELS
 from .utils.from_timm import Timm_Feature_Backbone, Timm_Feature_Backbone_Config
 
@@ -28,7 +28,7 @@ ResNetVariantType = Literal[
 ]
 
 
-@CFGS.Register_module(CONFIG_NAME)
+@CONFIGS.Register_module(CONFIG_NAME)
 @dataclass
 class ResNet_Config(Timm_Feature_Backbone_Config):
     """

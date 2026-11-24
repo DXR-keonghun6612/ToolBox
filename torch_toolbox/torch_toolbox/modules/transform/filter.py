@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from ... import CFGS
+from python_toolbox.config import CONFIGS
 from .. import MODELS
 from ..definition import Composable_Config
 from ..model.definition import Trainable_Model
@@ -19,7 +19,7 @@ _NAME = "filter"
 _CFG  = f"{_NAME}_Config"
 
 
-@CFGS.Register_module(_CFG)
+@CONFIGS.Register_module(_CFG)
 @dataclass
 class Filter_Config(Composable_Config):
     """커널 뱅크 설정.

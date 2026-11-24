@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-from ... import CFGS
+from python_toolbox.config import CONFIGS
 from .. import MODELS
 from ..definition import Composable_Config
 from ..model.definition import Trainable_Model
@@ -24,7 +24,7 @@ _CFG  = f"{_NAME}_Config"
 _SMOOTH_SIGMA = 2.0
 
 
-@CFGS.Register_module(_CFG)
+@CONFIGS.Register_module(_CFG)
 @dataclass
 class Radial_Config(Composable_Config):
     """극좌표 샘플링 설정.

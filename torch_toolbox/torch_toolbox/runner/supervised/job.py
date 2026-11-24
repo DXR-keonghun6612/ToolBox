@@ -112,7 +112,8 @@ class Supervised_Learning_Job(Learning_Job):
             if not is_test and scheduler is not None:
                 scheduler.step()
         if rank == 0 and metric is not None:
-            log_iter(current_iter, {_m.value: _a.Finalize() for _m, _a in metric.items()}, self.run_dir)
+            log_iter(current_iter, {_m.value: _a.Finalize() for _m, _a in metric.items()}, self.run_dir,
+                     self.log.getChild("metric"))
 
     def _Forward(
         self,

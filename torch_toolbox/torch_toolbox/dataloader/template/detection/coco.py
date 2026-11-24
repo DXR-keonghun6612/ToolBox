@@ -1,12 +1,12 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-from .... import CFGS
+from python_toolbox.config import CONFIGS
 from ... import DATASETS
 from ...definition import Custom_Dataset, Dataset_Config
 
 
-@CFGS.Register_module("COCO_Dataset_Config")
+@CONFIGS.Register_module("COCO_Dataset_Config")
 @dataclass
 class COCO_Dataset_Config(Dataset_Config):
     config_type: str = "COCO_Dataset_Config"
