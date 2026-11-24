@@ -44,6 +44,7 @@ graph RL
     FND --> POP
     FND --> PRO
     PRO --> POP
+    MAN --> PRO
     SHT --> FND
     BLD --> FND
     BLD --> PLC
@@ -60,8 +61,8 @@ graph RL
 | [`component/`](ui_toolbox/component) | 값 하나, 행 목록, 문서, 영상 편집, 자식 배치. 등록표 - 클래스 이름 -> 클래스 | 값의 뜻, config, page |
 | [`page/builder/`](ui_toolbox/page/builder) | config node -> 위젯 - node 검사, `link` · `action` · `items` 차례로 짓기, 영역 이름 검사(`__init__.py`). 이름 -> 클래스, 배치인가(`_find.py`), 배치 걸기(`_place.py`), key 묶음(`_names.py`), style 덮기와 QSS(`_sheet.py`) | 상태, 연결, component 하나하나 |
 | [`page/_popup.py`](ui_toolbox/page/_popup.py) | 창 하나 - `modal`, `result`, 크기, 확인 / 취소 줄 | 본문이 무엇인가 |
-| [`page/_progress.py`](ui_toolbox/page/_progress.py) | 진행 막대 · 상태 줄 · 로그 칸 · 멈춤 신호 · 잠금. 받는 것(`begin`, `report`, `line`, `end`)은 어느 스레드에서 와도 GUI 스레드로 | 작업, 기록 - 무엇이 진행을 보내는가 |
-| [`page/_main.py`](ui_toolbox/page/_main.py) | root page - config 를 central widget 에, root 묶음, 닫힐 때 멈출 것 | 상태, 입력의 뜻, 연결 |
+| [`page/_progress.py`](ui_toolbox/page/_progress.py) | 진행 막대 · 상태 줄 · 로그 칸 · 멈춤 신호 · 잠금. 받는 것(`begin`, `report`, `line`, `end`)은 어느 스레드에서 와도 GUI 스레드로. 기록 파일 따라 읽기 - JSON 줄마다 로그 칸, launcher 의 `job ended` 수로 진행 | 작업 - 무엇을 돌리는가 |
+| [`page/_main.py`](ui_toolbox/page/_main.py) | root page - config 를 central widget 에, root 묶음, 닫힐 때 멈출 것. `launcher` 멤버, `launch` - 작업 스레드에서 `Run`, 멈춤과 닫기는 `Stop` | 상태, 입력의 뜻, 어느 launcher 인가 |
 | [`page/_style.py`](ui_toolbox/page/_style.py) | 토큰 -> palette · 공통 style 객체 | 어느 위젯이 무엇인가 |
 | [`app.py`](ui_toolbox/app.py) | 앱 수명 - palette, page 띄우기, 루프 | 무엇을 띄우는가 |
 
@@ -114,19 +115,19 @@ graph RL
 | `regions()` | 계약 - `open_requested` 가 낼 영역 이름 | `Table_view`, `Tree_view` -> builder 검사 |
 | `add(child, title)` | 계약 - 자식 여럿을 제 방식으로 놓음 | [`Fold`](ui_toolbox/component/layout/_fold.py) |
 | [`Editor_base`](ui_toolbox/component/editor/_base.py) · `Draw_tool` · `Tool` | 골격 - 도구 선언 -> 툴바 · 단축키, 신호는 차원 `D` 를 안 가림 | `Raster_editor` |
-| [`Main`](ui_toolbox/page/_main.py) | 골격 - root page. `find`, `on_close` | 소비처 page 가 상속 |
+| [`Main`](ui_toolbox/page/_main.py) | 골격 - root page. `find`, `on_close`, `launcher`, `launch` | 소비처 page 가 상속, launcher 를 넣음 |
 | [`Fill`](ui_toolbox/page/builder/__init__.py) | 짓기 - root node 를 이미 지은 위젯에 채움 | `Main` |
 | [`Tokens`](ui_toolbox/page/_style.py) · `Palette` · `Base` | 토큰 -> palette · 공통 style 객체 | `app.Run`, `Main` |
 | [`Names`](ui_toolbox/page/builder/_names.py) | 묶음 - key -> 객체, `find` 경로 | `.items`, `.link`, `.action` |
 | [`Popup`](ui_toolbox/page/_popup.py) | 골격 - `body` + 확인 / 취소 줄 | `link` 의 배치 class, `Progress_popup` |
-| [`Progress_popup`](ui_toolbox/page/_progress.py) | 받는 자리 - `begin`, `report`, `line`, `end`(어느 스레드에서나), `stop_requested` | 소비처가 작업 기록을 이음 |
+| [`Progress_popup`](ui_toolbox/page/_progress.py) | 받는 자리 - `begin`(기록 파일, 전체 수), `report`, `line`, `end`(어느 스레드에서나), `stop_requested` | `Main.launch` |
 
 ## 워크플로
 
 | 타깃 | 담는 것 | 더 무는 것 |
 | --- | --- | --- |
 | `component` | control, table, tree, progress, layout, editor, 등록표 | numpy(editor), python_toolbox(`Registry`) |
-| `page` | builder, main, popup, 공통 style | python_toolbox(`file` - yaml) |
+| `page` | builder, main, popup, 공통 style | python_toolbox(`file` - yaml, `run` - launcher, 기록 파일) |
 | `app` | 앱 수명 - `Run` 하나 | - |
 
 - 모두 PySide6. 빌드는 [`pyproject.toml`](pyproject.toml) 하나 - 무는 것을 갈래로 안 가름
