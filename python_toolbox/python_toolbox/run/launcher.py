@@ -5,6 +5,7 @@ meta 는 launcher 설정의 `meta` 칸 - 맨 위 key 가 job 이름, 값이 job 
 job 설정의 클래스는 `config_type`(`CONFIGS`), job 클래스는 `object_type`(`JOB_REGISTRY`).
 `Run` 은 모든 job 설정과 job 클래스를 먼저 고른 뒤 띄움 - 하나라도 실패하면 아무것도 안 띄움. meta 가 바뀌면 다음 `Run` 에 반영.
 job 은 자기 프로세스에서 `(이름, 그 job 설정, base_dir)` 로 지어지고 돎 - job 은 launcher 를 모름.
+멈춤은 요청만(`Stop`) - job 마다의 pipe 로 보내고, job 프로세스가 받아 `job.stop()`. 끝내는 것은 job 의 `Work`.
 launcher 기록(`LAUNCHER_LOGGER`)은 둘만 - 띄움(이름, 시각), 결과(이름, 코드, hash, 내용). 세부는 job 기록.
 바탕 자리는 job 이 돌 자리 - 그 아래 자리는 job 이 정함. launcher 의 파일 기록은 그 아래 `LOG_DIR`. 설정 파일을 안 남김.
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from multiprocessing.connection import Connection, wait
@@ -91,6 +93,9 @@ class Launcher:
         self.base_dir = self.Make_base_dir()
         (self.base_dir / LOG_DIR).mkdir(exist_ok=True)
         self.log = logging.getLogger(LAUNCHER_LOGGER)
+        #: 도는 job 이름 -> 멈춤 요청을 보낼 pipe. `Run` 이 채우고 비움, `Stop` 은 다른 스레드에서 읽음.
+        self._stops: dict[str, Connection] = {}
+        self._stops_lock = threading.Lock()
 
     @classmethod
     def From_argv(cls, argv: Sequence[str]):
@@ -141,11 +146,16 @@ class Launcher:
         _pending: dict[Connection, tuple[str, Any]] = {}
         for _name, _cls in _classes.items():
             _recv, _send = _ctx.Pipe(duplex=False)
-            _proc = _ctx.Process(target=_Run_job, args=(_name, _cls, _configs[_name], self.base_dir, _send),
+            _stop_recv, _stop_send = _ctx.Pipe(duplex=False)
+            _proc = _ctx.Process(target=_Run_job,
+                                 args=(_name, _cls, _configs[_name], self.base_dir, _send, _stop_recv),
                                  name=f"job-{_name}")
             _proc.start()
             _send.close()
+            _stop_recv.close()
             _pending[_recv] = (_name, _proc)
+            with self._stops_lock:
+                self._stops[_name] = _stop_send
             self.log.info("job launched", extra={"job": _name, "pid": _proc.pid})
 
         _results: dict[str, Result] = {}
@@ -161,18 +171,48 @@ class Launcher:
                     _out = {_name: (_code, _configs[_name].Hash(), "job process ended without a result")}
                 _conn.close()
                 _proc.join()
+                with self._stops_lock:
+                    self._stops.pop(_name).close()
                 for _n, (_code, _hash, _content) in _out.items():
                     self.log.log(logging.INFO if _code == 0 else logging.ERROR, "job ended",
                                  extra={"job": _n, "code": _code, "hash": _hash, "content": _content})
                 _results.update(_out)
         return _results
 
+    def Stop(self) -> None:
+        """도는 job 마다 멈춤 요청을 보냄. 다른 스레드에서 불러도 됨 - `Run` 은 막혀 있는 동안. 도는 job 이 없으면 할 일 없음.
 
-def _Run_job(name: str, job_cls: type[Job], config: Job_Config, base_dir: Path, conn: Connection) -> None:
-    """job 프로세스 하나 - job 을 짓고 돌려 결과를 보냄. 짓기, 기록 선언이 실패하면 그 사유를 결과로. spawn 대상이라 모듈 함수."""
+        job 이 끝나는 것은 그 job 의 `Work` 가 `stopped` 를 본 뒤 - 결과 코드는 `Outcome` 이 정함(기본 -1).
+        """
+        with self._stops_lock:
+            for _name, _conn in self._stops.items():
+                try:
+                    _conn.send(True)
+                except BrokenPipeError:  # 결과를 보내고 막 끝난 job - 멈출 것 없음
+                    continue
+                self.log.info("job stop requested", extra={"job": _name})
+
+
+def _Run_job(name: str, job_cls: type[Job], config: Job_Config, base_dir: Path, conn: Connection,
+             stop: Connection) -> None:
+    """job 프로세스 하나 - job 을 짓고, 멈춤 요청을 듣는 스레드를 걸고, 돌려 결과를 보냄.
+
+    짓기, 기록 선언이 실패하면 그 사유를 결과로. spawn 대상이라 모듈 함수.
+    """
     try:
-        _out = job_cls(name, config, base_dir).Run()
+        _job = job_cls(name, config, base_dir)
+        threading.Thread(target=_Listen_stop, args=(stop, _job), name=f"stop-{name}", daemon=True).start()
+        _out = _job.Run()
     except Exception as _e:  # noqa: BLE001 - 짓기 실패도 결과로 보냄, 다시 던지면 부모는 사유를 모름
         _out = {name: (next(iter(FAILED)), config.Hash(), f"{type(_e).__name__}: {_e}")}
     conn.send(_out)
     conn.close()
+
+
+def _Listen_stop(stop: Connection, job: Job) -> None:
+    """멈춤 요청 하나를 기다려 `job.stop()`. 부모가 pipe 를 닫으면(job 이 끝남) 그냥 끝."""
+    try:
+        stop.recv()
+    except EOFError:
+        return
+    job.stop()

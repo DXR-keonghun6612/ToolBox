@@ -12,6 +12,8 @@ job 클래스와 설정은 `tests/support/_jobs.py` - job 프로세스가 다시
 from __future__ import annotations
 
 import json
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +45,15 @@ def _Events(base_dir: Path) -> list[dict]:
     return [json.loads(_l) for _l in (base_dir / LOG_DIR / "events.jsonl").read_text().splitlines()]
 
 
+def _Wait_until(ready, seconds: float = 30.0) -> None:
+    """`ready()` 가 참이 될 때까지 기다림. 시간 안에 안 서면 실패."""
+    _until = time.monotonic() + seconds
+    while not ready():
+        if time.monotonic() > _until:
+            raise AssertionError("wait: condition not met in time")
+        time.sleep(0.05)
+
+
 def test_launcher_flow(tmp_path, monkeypatch):
     monkeypatch.setattr(launcher_module, "BASE_ROOT", str(tmp_path))
     _file = str(_RES / "launcher.yaml")
@@ -72,9 +83,10 @@ def test_launcher_flow(tmp_path, monkeypatch):
     assert _results["broken"][0] == 1, "run: failing job -> positive code"
     assert (_launcher.base_dir / "train" / "done.txt").read_text() == "64", "run: job wrote into its own folder"
 
-    # step : launcher record - launched and ended per job, nothing else
-    _events = _Events(_launcher.base_dir)
-    assert {_e["name"] for _e in _events} == {LAUNCHER_LOGGER}, "record: launcher logger only"
+    # step : records in one place - launcher: launched and ended per job, jobs: their own by default
+    _all = _Events(_launcher.base_dir)
+    assert {_e["name"] for _e in _all} == {LAUNCHER_LOGGER, "job.train", "job.broken"}, "record: launcher and jobs"
+    _events = [_e for _e in _all if _e["name"] == LAUNCHER_LOGGER]
     assert sorted((_e["message"], _e["job"]) for _e in _events) == \
         [("job ended", "broken"), ("job ended", "train"), ("job launched", "broken"), ("job launched", "train")], \
         "record: launched and ended per job"
@@ -98,6 +110,19 @@ def test_launcher_flow(tmp_path, monkeypatch):
     _crash = _Det_Launcher.From_argv([_file, "broken.object_type=crash"])
     _code, _, _content = _crash.Run()["broken"]
     assert _code == 3 and "without a result" in _content, "crash: exit code, no result"
+
+    # step : stop from another thread while Run blocks - the waiting job ends by its own Work with the stop code
+    _waiting = _Det_Launcher.From_argv([_file, "wait.config_type=test_train_job", "wait.object_type=wait"])
+    _out: dict = {}
+    _runner = threading.Thread(target=lambda: _out.update(_waiting.Run()))
+    _runner.start()
+    _Wait_until(lambda: any(_e["message"] == "job launched" and _e["job"] == "wait"
+                            for _e in _Events(_waiting.base_dir)[_count:]))
+    _waiting.Stop()
+    _runner.join(timeout=30)
+    assert not _runner.is_alive(), "stop: Run returned"
+    assert _out["wait"][0] == -1 and set(_out) == {"train", "broken", "wait"}, "stop: waiting job stopped, all results"
+    _waiting.Stop()  # 도는 job 없음 - 할 일 없음
 
     # step : a consumer moves the base dir; argv file@ swaps a job part relative to cwd
     class _Elsewhere_Launcher(_Det_Launcher):
