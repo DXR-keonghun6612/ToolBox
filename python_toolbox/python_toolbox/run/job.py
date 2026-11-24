@@ -13,13 +13,13 @@ import logging
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import ClassVar
 
 from ..file import Read_from, Write_to
 from ..schema import Walk, Walk_rule
-from .log import LOG_DIR, Attach, Begin_run, Detach
+from .log import LOG_DIR, Attach, Begin_run, Default_log, Detach, Log_Config
 from .unit import Diff, Unit_Config
 
 #: job 결과 폴더에 남기는 job 설정 파일 이름. 폴더가 job 마다라 이름에 job 을 안 붙임.
@@ -41,9 +41,11 @@ class Job_Config(Unit_Config):
     `object_type` 이 `JOB_REGISTRY` 의 job 클래스 key. 하위 타입은 `config_type` 으로 고름.
 
     Attributes:
+        log: job 기록의 선언. 기본 `Default_log` - 바탕 자리의 `LOG_DIR` 에 남음, 기록이 없으면 빈 줄. 끄려면 `null`.
         resume: 이어 쓸 job 결과 폴더. 비면 새로 - 결과 폴더는 job 이 정함. 정체성 밖.
     """
 
+    log: Log_Config | None = field(default_factory=Default_log)
     resume: str = ""
 
     __exclude_identity__: ClassVar[set[str]] = {"resume"}
@@ -157,7 +159,6 @@ class Job:
             Attach(self.log.name, self.config.log, self.base_dir / LOG_DIR)
         _counter = _Error_counter()
         self.log.addHandler(_counter)
-        self._stop.clear()
         self.log.info("work started", extra={"job": self.name, "started": self.started})
         _start = time.monotonic()
         try:
@@ -175,13 +176,14 @@ class Job:
         )
         if self.config.log is not None:
             Detach(self.log.name)
+        self._stop.clear()
         return {self.name: (_code, self.config.Hash(), _content)}
 
     def stop(self) -> None:
-        """멈춤 요청. `Work` 가 `stopped` 를 보고 끝냄 - 강제로 끊지 않음."""
+        """멈춤 요청. `Work` 가 `stopped` 를 보고 끝냄 - 강제로 끊지 않음. `Run` 전에 온 요청도 그 실행에 듦."""
         self._stop.set()
 
     @property
     def stopped(self) -> bool:
-        """이번 실행에 멈춤 요청이 왔나."""
+        """이번 실행에 멈춤 요청이 왔나. `Run` 이 끝나면 지움 - 다음 실행에 안 넘어감."""
         return self._stop.is_set()
